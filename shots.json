@@ -1,1 +1,1 @@
-[{"name":"1-cover.jpg","query":"?shot=cover&seed=7"},{"name":"2-night-market.jpg","query":"?shot=market&seed=7"},{"name":"3-glasshouse.jpg","query":"?shot=glass&seed=7"},{"name":"4-complete.jpg","query":"?shot=end&seed=7"}]
+[{"name":"1-cover.jpg","query":"?shot=cover"},{"name":"2-night-market.jpg","query":"?shot=night-market"},{"name":"3-glasshouse.jpg","query":"?shot=glasshouse"},{"name":"4-complete.jpg","query":"?shot=complete"}]

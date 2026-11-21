@@ -1,55 +1,46 @@
-// Twice-Told Tides — the hand-in. The game itself is the static site in
-// game/ (open game/index.html in a desktop browser and play; it needs no
-// network and no build). This program is what enters it: it copies game/
-// and screenshots/ from beside this file into the output directory and
-// writes the dossier — the summary of the game and its pictures that the
-// judge reads — with the vendored make.fun library, whose bytes the gate
-// rebuilds and compares against these.
+// Twice-Told Tides — the hand-in program (Node 22, standard library
+// only). It gathers the entry — the game/ folder and the screenshots/ —
+// into the output directory and writes the dossier.json the judge reads,
+// built by the vendored make.fun helper under the gate's own caps.
 //
-// Run it the way the grader does, or locally with an output directory:
+// Outside the grader, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// and `node serve.ts` plays the game locally first.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-// How many files a folder holds, counting everything beneath it — used only
-// for the hand-in's own report at the end, never for the dossier itself.
-function countFiles(dir: string): number {
-  let total = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    total += entry.isDirectory() ? countFiles(join(dir, entry.name)) : 1;
-  }
-  return total;
-}
+const repoRoot = fileURLToPath(new URL('.', import.meta.url));
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-const repoDir = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-
-// The game, whole: every file under game/ travels unchanged.
-mkdirSync(outDir, { recursive: true });
-cpSync(join(repoDir, 'game'), join(outDir, 'game'), { recursive: true });
-
-// The screenshots, whole: four real renders of the game in play.
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoDir, 'screenshots'))) {
-  cpSync(join(repoDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
-}
-
-// The dossier, written with the same caps the scorer grades by: the source
-// text the judge outlines is capped at 160 KiB, screenshots at 4 files of
-// 256 KiB, and game/ at 993 entries, 48 MiB and 1,000-byte paths.
-const dossier = buildDossier(outDir, {
+// The scorer's own caps (from the kit's gate): the text cap shapes the
+// dossier's bytes; the others refuse an entry the scorer would refuse —
+// more than 4 screenshots or one over 256 KiB, more than 993 files in
+// game/ or 48 MiB of game files in all, or a game/ path over 1000 bytes.
+const DOSSIER_CAPS = {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
   game_max_files: 993,
   game_max_bytes: 50331648,
   game_path_max_bytes: 1000,
-});
-writeFileSync(join(outDir, 'dossier.json'), dossier);
+};
 
-console.log(
-  `Twice-Told Tides handed in: ${countFiles(join(outDir, 'game'))} game files, ` +
-    `${countFiles(join(outDir, 'screenshots'))} screenshots, dossier of ${dossier.byteLength} bytes.`,
-);
+function copyEntry() {
+  mkdirSync(outputDir, { recursive: true });
+  cpSync(join(repoRoot, 'game'), join(outputDir, 'game'), { recursive: true });
+  mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
+  if (existsSync(join(repoRoot, 'screenshots'))) {
+    cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
+  }
+}
+
+function writeDossier() {
+  const dossier = buildDossier(outputDir, DOSSIER_CAPS);
+  writeFileSync(join(outputDir, 'dossier.json'), dossier);
+}
+
+copyEntry();
+writeDossier();
+console.log(`Twice-Told Tides handed in to ${outputDir}`);

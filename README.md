@@ -2,91 +2,61 @@
 [![rank](https://make.fun/badge/best-spot-the-difference-game-20261121-0451/suwanangcrew025-ops/makefun-spot-difference/rank.svg)](https://make.fun/bounty/best-spot-the-difference-game-20261121-0451/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=best-spot-the-difference-game-20261121-0451)
 [![reward](https://make.fun/badge/best-spot-the-difference-game-20261121-0451/suwanangcrew025-ops/makefun-spot-difference/reward.svg)](https://make.fun/bounty/best-spot-the-difference-game-20261121-0451?utm_source=github&utm_medium=readme&utm_campaign=best-spot-the-difference-game-20261121-0451)
 
-# Twice-Told Tides
+# Twice-Told Tides — a spot-the-difference game
 
-A spot-the-difference parlour. Every picture in it is told twice — once as it
-was, once with something quietly changed — and the second telling is yours to
-catch out. Three hand-drawn canvas scenes, eighteen differences between them,
-one clock that never stops being polite about running out.
+An entry for make.fun's **best-spot-the-difference-game-20261121-0451** bounty:
+an original spot-the-difference parlour, painted entirely on canvas, with
+no assets, no libraries and no network requests.
 
-## The scenes
+## The game
 
-1. **Dusk at Lanternwick Harbour** — a lighthouse, a fishing boat, a cat on
-   the quay. Five differences, 150 seconds.
-2. **The Night Market** — three stalls under strings of lights and a full
-   moon. Six differences, 180 seconds.
-3. **The Glasshouse** — morning through a glass roof, benches of pots, a
-   butterfly. Seven differences, 210 seconds.
+Three hand-drawn scenes, each painted twice side by side — the right panel
+hides the changes:
 
-Each scene is painted once by its own painter, which draws the scene and
-takes an *altered set* naming which differences change form on the second
-telling — so the two panels can only ever differ at the spots the game says
-they do.
+1. **Dusk at Lanternwick Harbour** — 5 differences, 150 seconds. A lighthouse
+   lamp, a sail, a boat stripe, a gull, a quay cat.
+2. **The Night Market** — 6 differences, 180 seconds. A moon, a violet bulb,
+   an awning, the fruit, a bunting flag, a jar.
+3. **The Glasshouse** — 7 differences, 210 seconds. A cracked roof pane, a
+   hanging planter, a butterfly's wings, a cactus, a tall flower, a snail,
+   a watering can.
 
-## How to play
+Every panel is drawn twice from the same seeded streams, so the two pictures
+are pixel-identical except at the designed difference spots.
 
-- **Click** a difference on either panel to mark it: a gold ring and a tick
-  seal appear on both tellings, with a small burst of sparks.
-- A **miss** ripples where you clicked and costs **4 seconds**.
-- **Hints** (3 per scene) cost **8 seconds** and circle a hidden difference
-  with a dashed, turning ring until you find it.
-- Finish a scene for one star; keep two-fifths of the clock for another;
-  take no hint for the third.
+## How it plays
 
-| Key | Does |
-| --- | --- |
-| Enter | Begin · next scene · play again |
-| H | Hint |
-| P / Esc | Pause |
-| M | Sound on/off |
-| R | Restart scene |
-| N | Next scene |
+- Click a difference on either panel: a gold ring and tick seal it, with a
+  spark burst and a chime. A wrong click ripples and costs 4 seconds.
+- **H** spends one of 3 hints per scene (−8s): a dashed pulsing ring points
+  at an unfound difference. **P** pauses, **M** mutes, **R** restarts the
+  scene, **N** moves on, **Enter** starts and advances.
+- The time bar runs green → amber → red, and each scene ends with 1–3 stars
+  for speed and cleanliness. A hidden aria-live status line announces every
+  event for screen readers.
+- Sounds are synthesised with WebAudio — find chime, miss thud, hint blip,
+  low-time tick, complete arpeggio. No audio files.
 
-Every event is also announced in a screen-reader status line. All sound is
-synthesised live with WebAudio — chimes, thuds, ticks, a small arpeggio —
-there are no audio files.
+## Play it
 
-## Run it
-
-The game is static files under `game/` with no build step and no network
-request: serve that folder with anything, or use the bundled dev server —
-
-```
-node serve.ts        # then open http://localhost:8080
+```sh
+node serve.ts
+# open http://localhost:8080
 ```
 
-— and open `game/index.html` in a desktop browser.
+## Files
 
-## How it is put together
+- `game/index.html` — the page: two-panel canvas, status line, one module script.
+- `game/src/` — one job per file: `config.js` (numbers and palette),
+  `random.js` (seeded streams), `paintkit.js` (shared brushes),
+  `scene-harbour.js`, `scene-market.js`, `scene-glasshouse.js` (the painters),
+  `scenes.js` (registry), `engine.js` (state and rules), `render.js` (HUD,
+  panels, rings and cards), `input.js` (mouse and keys), `audio.js` (synth),
+  `shots.js` (`?shot=` staging), `main.js` (boot and loop).
+- `main.ts` — the hand-in program: copies `game/` and `screenshots/` to
+  `/output` and writes `dossier.json` with the vendored make.fun library.
+- `screenshots/` — four real renders of the game's own code.
 
-`game/src/`, one job per file:
+## License
 
-- `config.js` — the stage's measurements, timing rules and palette
-- `random.js` — the seeded random source the painters texture with
-- `paintkit.js` — shared brushes: skies, glows, gulls, the wooden frame
-- `scene-harbour.js`, `scene-market.js`, `scene-glasshouse.js` — the three
-  painters and their difference lists
-- `scenes.js` — the scene book, in playing order
-- `engine.js` — the hunt's state: clock, finds, misses, hints, stars
-- `render.js` — the wall, the counter, the panels, the markers, the cards
-- `input.js` — mouse and keyboard
-- `audio.js` — the WebAudio sound kit
-- `shots.js` — the `?shot=` staging that poses the screenshots
-- `main.js` — the bootstrap and frame loop
-
-## Handing it in
-
-`main.ts` (Node 22, standard library only) copies `game/` and `screenshots/`
-to the output directory and writes `dossier.json` with the vendored
-`vendor/makefun-game.ts`, copied from the competition kit unchanged:
-
-```
-mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-```
-
-The screenshots in `screenshots/` are real renders of the game in headless
-Chrome, posed with the queries in `shots.json`: a harbour hunt mid-course
-(the cover), the night market, the glasshouse with a hint ring showing, and
-the completion card.
-
-Licensed under MIT (see `LICENSE`).
+MIT — see `LICENSE`.
