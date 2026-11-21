@@ -1,200 +1,225 @@
-// The game's rules, with no drawing and no DOM: which scene is up, which
-// differences are found, what the clock says, what a click does. The
-// renderer reads this state; the input file feeds it clicks and keys.
-// Effects (rings where a find landed, ripples where a miss did) live here
-// as timestamps on the game clock so a screenshot can freeze them mid-ring.
-import { FIND_RADIUS, HINTS_PER_SCENE, HINT_COST_SECONDS, MISS_PENALTY_SECONDS, SCENE_SECONDS } from './config.js';
-import { SCENES } from './scenes.js';
-import { playFind, playGameComplete, playHint, playMiss, playSceneComplete } from './audio.js';
+// engine.js — the state of the hunt: which screen we are on, which scene is
+// being told, what has been found, what the clock says, and what every click,
+// key and hint does about it. The renderer only reads this state; the input
+// layer only calls these methods. Every event also speaks its line into
+// `status`, which the page mirrors into a screen-reader live region.
 
-export const SCREEN = {
-  TITLE: 'title',
-  PLAY: 'play',
-  PAUSED: 'paused',
-  SCENE_DONE: 'scene-done',
-  GAME_DONE: 'game-done',
-};
+import { RULES, STAR_TIME_SHARE } from './config.js';
+import { SCENES, sceneAt, differenceAt } from './scenes.js';
 
-/** A fresh game, sitting on its title screen. */
-export function createGame() {
-  return {
-    screen: SCREEN.TITLE,
-    sceneIndex: 0,
-    found: new Set(),
-    secondsLeft: SCENE_SECONDS[0],
-    sceneSeconds: SCENE_SECONDS[0],
-    hintsLeft: HINTS_PER_SCENE,
-    hintId: null,
-    hintUntil: 0,
-    clock: 0,
-    effects: [],
-    mistakes: 0,
-    hintsUsed: 0,
-    totalFound: 0,
-    totalSeconds: 0,
-    timedOut: false,
-  };
-}
-
-/** Put a scene on the table: nothing found, a full clock, fresh hints. */
-export function loadScene(game, index) {
-  game.sceneIndex = index;
-  game.found = new Set();
-  game.sceneSeconds = SCENE_SECONDS[index];
-  game.secondsLeft = SCENE_SECONDS[index];
-  game.hintsLeft = HINTS_PER_SCENE;
-  game.hintId = null;
-  game.hintUntil = 0;
-  game.effects = [];
-  game.timedOut = false;
-}
-
-/** Start from the title screen: totals cleared, first scene loaded. */
-export function startGame(game) {
-  game.mistakes = 0;
-  game.hintsUsed = 0;
-  game.totalFound = 0;
-  game.totalSeconds = 0;
-  loadScene(game, 0);
-  game.screen = SCREEN.PLAY;
-}
-
-/** The scene currently on the table. */
-export function currentScene(game) {
-  return SCENES[game.sceneIndex];
-}
-
-/** How many differences of the current scene are still hidden. */
-export function remaining(game) {
-  return currentScene(game).differences.length - game.found.size;
-}
-
-/** Advance the clock; a play screen whose time runs out ends the scene. */
-export function update(game, dt) {
-  game.clock += dt;
-  game.effects = game.effects.filter((effect) => game.clock - effect.at < effect.span);
-  if (game.screen !== SCREEN.PLAY) return;
-  game.secondsLeft -= dt;
-  if (game.secondsLeft <= 0) {
-    game.secondsLeft = 0;
-    game.timedOut = true;
-    finishScene(game);
+export class Game {
+  constructor(sound) {
+    this.sound = sound;
+    this.screen = 'title'; // title | playing | paused | sceneDone | gameDone | timeUp
+    this.sceneIndex = 0;
+    this.found = new Set();
+    this.timeLeft = 0;
+    this.hintsLeft = RULES.hintsPerScene;
+    this.hintsUsed = 0;
+    this.misses = 0;
+    this.effects = []; // sparks and ripples, in panel-local coordinates
+    this.hintId = null; // the difference the hint ring is circling, if any
+    this.hintTimeLeft = 0;
+    this.gameTime = 0; // seconds of play, for pulses and other gentle motion
+    this.results = []; // one record per finished scene
+    this.status = 'Twice-Told Tides. Press Enter or click to begin.';
+    this.frozen = false; // screenshot staging freezes the clock and the pulses
+    this.stagePhase = 0.4; // the fixed pulse phase used while frozen
+    this.lastTickSecond = -1;
   }
-}
 
-/** Close the current scene and move to its results card. */
-function finishScene(game) {
-  game.totalSeconds += game.sceneSeconds - Math.max(0, Math.round(game.secondsLeft));
-  game.totalFound += game.found.size;
-  const last = game.sceneIndex === SCENES.length - 1;
-  if (last && !game.timedOut && remaining(game) === 0) {
-    game.screen = SCREEN.GAME_DONE;
-    playGameComplete();
-  } else {
-    game.screen = SCREEN.SCENE_DONE;
-    if (!game.timedOut) playSceneComplete();
+  get scene() {
+    return sceneAt(this.sceneIndex);
   }
-}
 
-/**
- * A click inside a panel, in panel coordinates. A click within a hidden
- * difference's radius finds it (on both panels at once); any other click
- * is a miss and costs clock. Returns what happened, for the input's log.
- */
-export function clickPanel(game, panel, x, y) {
-  if (game.screen !== SCREEN.PLAY) return 'ignored';
-  const scene = currentScene(game);
-  let best = null;
-  let bestDistance = Infinity;
-  for (const difference of scene.differences) {
-    if (game.found.has(difference.id)) continue;
-    const distance = Math.hypot(x - difference.x, y - difference.y);
-    const reach = Math.max(FIND_RADIUS, difference.r);
-    if (distance <= reach && distance < bestDistance) {
-      best = difference;
-      bestDistance = distance;
+  remaining() {
+    return this.scene.differences.length - this.found.size;
+  }
+
+  totalStars() {
+    return this.results.reduce((sum, r) => sum + r.stars, 0);
+  }
+
+  announce(line) {
+    this.status = line;
+  }
+
+  // From the title card into the first scene, with a clean set of results.
+  startGame() {
+    this.results = [];
+    this.sound.wake();
+    this.beginScene(0);
+  }
+
+  // Set a scene up fresh: full clock, full hints, nothing found.
+  beginScene(index) {
+    this.sceneIndex = index;
+    const scene = this.scene;
+    this.found = new Set();
+    this.timeLeft = scene.timeLimit;
+    this.hintsLeft = RULES.hintsPerScene;
+    this.hintsUsed = 0;
+    this.misses = 0;
+    this.effects = [];
+    this.hintId = null;
+    this.hintTimeLeft = 0;
+    this.lastTickSecond = -1;
+    this.screen = 'playing';
+    this.announce(
+      `${scene.title}. ${scene.differences.length} differences hide between the two tellings. ${scene.timeLimit} seconds on the clock.`,
+    );
+  }
+
+  // A click on one of the panels, in panel-local coordinates. `panel` is 0
+  // for the left picture and 1 for the right; a difference found on either
+  // telling counts on both.
+  clickPanel(panel, x, y) {
+    if (this.screen !== 'playing' || this.frozen) return;
+    this.sound.wake();
+    const scene = this.scene;
+    const hit = differenceAt(scene, x, y);
+    if (hit && !this.found.has(hit.id)) {
+      this.found.add(hit.id);
+      if (this.hintId === hit.id) {
+        this.hintId = null;
+        this.hintTimeLeft = 0;
+      }
+      this.effects.push({ kind: 'spark', x: hit.x, y: hit.y, panel: 'both', age: 0, life: 0.65 });
+      this.sound.find();
+      if (this.remaining() === 0) {
+        this.completeScene();
+      } else {
+        this.announce(`Found: ${hit.label}. ${this.remaining()} to go.`);
+      }
+      return;
+    }
+    if (hit && this.found.has(hit.id)) {
+      this.announce(`Already found: ${hit.label}. ${this.remaining()} to go.`);
+      return;
+    }
+    // A miss: a ripple where the click fell, and seconds off the clock.
+    this.misses += 1;
+    this.effects.push({ kind: 'ripple', x, y, panel, age: 0, life: 0.55 });
+    this.sound.miss();
+    this.loseTime(RULES.missPenaltySeconds, `Not there — ${RULES.missPenaltySeconds} seconds slip away. ${this.remaining()} to go.`);
+  }
+
+  // Spend one hint: the clock pays, and a dashed ring circles the first
+  // difference not yet found, on both tellings, for a few seconds.
+  useHint() {
+    if (this.screen !== 'playing' || this.frozen) return;
+    if (this.hintsLeft <= 0) {
+      this.announce('No hints left in this scene. Your eyes will have to do.');
+      return;
+    }
+    const next = this.scene.differences.find((d) => !this.found.has(d.id));
+    if (!next) return;
+    this.hintsLeft -= 1;
+    this.hintsUsed += 1;
+    this.hintId = next.id;
+    this.hintTimeLeft = RULES.hintSeconds;
+    this.sound.hint();
+    this.loseTime(RULES.hintPenaltySeconds, `A hint glimmers somewhere in the picture. ${RULES.hintPenaltySeconds} seconds for the glimmer; ${this.hintsLeft} hints left.`);
+  }
+
+  togglePause() {
+    if (this.screen === 'playing') {
+      this.screen = 'paused';
+      this.announce('Paused. Press P to go back to the hunt.');
+    } else if (this.screen === 'paused') {
+      this.screen = 'playing';
+      this.announce(`Back to ${this.scene.title}. ${this.remaining()} to go.`);
     }
   }
-  if (best !== null) {
-    game.found.add(best.id);
-    if (game.hintId === best.id) game.hintId = null;
-    game.effects.push({ kind: 'ring', x: best.x, y: best.y, r: best.r, at: game.clock, span: 0.9 });
-    game.effects.push({ kind: 'spark', x: best.x, y: best.y, r: best.r, at: game.clock, span: 0.7 });
-    playFind();
-    if (remaining(game) === 0) finishScene(game);
-    return 'found';
+
+  restartScene() {
+    if (this.screen === 'title') return;
+    // Replaying a scene from its complete card takes its result back, so
+    // finishing it again records one result, not two.
+    if (this.screen === 'sceneDone') this.results.pop();
+    this.beginScene(this.sceneIndex);
   }
-  game.mistakes += 1;
-  game.secondsLeft = Math.max(0, game.secondsLeft - MISS_PENALTY_SECONDS);
-  game.effects.push({ kind: 'ripple', panel, x, y, r: 16, at: game.clock, span: 0.55 });
-  playMiss();
-  if (game.secondsLeft <= 0) {
-    game.timedOut = true;
-    finishScene(game);
+
+  // From a scene-complete card: onward to the next telling, or, after the
+  // last scene, to the game-complete card.
+  nextScene() {
+    if (this.screen !== 'sceneDone') return;
+    if (this.sceneIndex + 1 >= SCENES.length) {
+      this.screen = 'gameDone';
+      this.sound.gameDone();
+      this.announce(`The parlour is complete: ${this.totalStars()} of ${SCENES.length * 3} stars. Press R to play again.`);
+    } else {
+      this.beginScene(this.sceneIndex + 1);
+    }
   }
-  return 'miss';
-}
 
-/**
- * Spend a hint: the first still-hidden difference (in the scene's own
- * order) pulses for a few seconds. Costs clock and one of the scene's
- * hints; refuses when none are left or nothing is hidden.
- */
-export function useHint(game) {
-  if (game.screen !== SCREEN.PLAY) return false;
-  if (game.hintsLeft <= 0) return false;
-  const target = currentScene(game).differences.find((difference) => !game.found.has(difference.id));
-  if (target === undefined) return false;
-  game.hintsLeft -= 1;
-  game.hintsUsed += 1;
-  game.secondsLeft = Math.max(0, game.secondsLeft - HINT_COST_SECONDS);
-  game.hintId = target.id;
-  game.hintUntil = game.clock + 2.4;
-  playHint();
-  return true;
-}
-
-/** Whether the hint ring should be showing, and on which difference. */
-export function activeHint(game) {
-  if (game.hintId === null || game.clock > game.hintUntil) return null;
-  return currentScene(game).differences.find((difference) => difference.id === game.hintId) ?? null;
-}
-
-/** Pause or resume a scene in play. */
-export function togglePause(game) {
-  if (game.screen === SCREEN.PLAY) game.screen = SCREEN.PAUSED;
-  else if (game.screen === SCREEN.PAUSED) game.screen = SCREEN.PLAY;
-}
-
-/** From a scene's results card: on to the next scene, or the final card. */
-export function advance(game) {
-  if (game.screen === SCREEN.GAME_DONE) {
-    startGame(game);
-    return;
+  // The last difference of a scene is found: score it and show its card.
+  completeScene() {
+    const scene = this.scene;
+    const stars =
+      1 +
+      (this.timeLeft >= scene.timeLimit * STAR_TIME_SHARE ? 1 : 0) +
+      (this.hintsUsed === 0 ? 1 : 0);
+    this.results.push({
+      sceneId: scene.id,
+      title: scene.title,
+      stars,
+      timeLeft: Math.ceil(this.timeLeft),
+      misses: this.misses,
+      hintsUsed: this.hintsUsed,
+    });
+    this.screen = 'sceneDone';
+    this.sound.sceneDone();
+    this.announce(
+      `${scene.title} complete: all ${scene.differences.length} differences found, ${stars} of 3 stars. Press N for the next scene, or R to play this one again.`,
+    );
   }
-  if (game.screen !== SCREEN.SCENE_DONE) return;
-  if (game.sceneIndex === SCENES.length - 1) {
-    game.screen = SCREEN.GAME_DONE;
-    return;
-  }
-  loadScene(game, game.sceneIndex + 1);
-  game.screen = SCREEN.PLAY;
-}
 
-/** Replay the scene on the table (from its results card, or mid-play). */
-export function retryScene(game) {
-  if (game.screen === SCREEN.SCENE_DONE) {
-    game.totalFound -= game.found.size;
-    game.totalSeconds -= game.sceneSeconds - Math.max(0, Math.round(game.secondsLeft));
+  // Take seconds off the clock and speak a line; running the clock out ends
+  // the scene where it stands.
+  loseTime(seconds, line) {
+    this.timeLeft -= seconds;
+    if (this.timeLeft <= 0) {
+      this.timeLeft = 0;
+      this.screen = 'timeUp';
+      this.hintId = null;
+      this.sound.timeUp();
+      this.announce(`Out of time in ${this.scene.title}, with ${this.remaining()} still hidden. Press R to try the scene again.`);
+    } else {
+      this.announce(line);
+    }
   }
-  loadScene(game, game.sceneIndex);
-  game.screen = SCREEN.PLAY;
-}
 
-/** Stars for a finished run: three for a clean sweep, fewer as the hunt roughens. */
-export function stars(game) {
-  if (game.totalFound < SCENES.reduce((sum, scene) => sum + scene.differences.length, 0)) return 1;
-  if (game.mistakes === 0 && game.hintsUsed === 0) return 3;
-  if (game.mistakes <= 4 && game.hintsUsed <= 2) return 2;
-  return 1;
+  // Advance the clock, the hint ring and the effects. Called every frame;
+  // while frozen (screenshot staging) nothing moves at all.
+  update(dt) {
+    if (this.frozen) return;
+    if (this.screen !== 'title' && this.screen !== 'gameDone') {
+      for (const fx of this.effects) fx.age += dt;
+      this.effects = this.effects.filter((fx) => fx.age < fx.life);
+    }
+    if (this.screen !== 'playing') return;
+    this.gameTime += dt;
+    this.timeLeft -= dt;
+    if (this.hintId) {
+      this.hintTimeLeft -= dt;
+      if (this.hintTimeLeft <= 0) {
+        this.hintId = null;
+        this.hintTimeLeft = 0;
+      }
+    }
+    const whole = Math.ceil(this.timeLeft);
+    if (this.timeLeft <= RULES.lowTimeWarning && this.timeLeft > 0 && whole !== this.lastTickSecond) {
+      this.lastTickSecond = whole;
+      this.sound.tick();
+    }
+    if (this.timeLeft <= 0) {
+      this.timeLeft = 0;
+      this.screen = 'timeUp';
+      this.hintId = null;
+      this.hintTimeLeft = 0;
+      this.sound.timeUp();
+      this.announce(`Out of time in ${this.scene.title}, with ${this.remaining()} still hidden. Press R to try the scene again.`);
+    }
+  }
 }

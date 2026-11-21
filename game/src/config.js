@@ -1,55 +1,59 @@
-// Twice-Told Tides — the fixed numbers every other file shares: the stage
-// size, where the two panels sit, the clock each scene allows, and the
-// palette the scenes are painted from. Nothing here decides or draws; it
-// only names things, so a change of layout or colour happens in one place.
+// config.js — the parlour's fixed measurements: canvas, panels, timing, palette.
+// Everything layout-shaped lives here so the engine and the renderer never
+// disagree about where a panel sits or how long a scene lasts.
 
-/** The canvas is one fixed stage; CSS stretches it to the window. */
+// The canvas is a fixed stage; the page scales it to fit the window.
 export const VIEW = { width: 1280, height: 800 };
 
-/** The band across the top that carries the title, counter and clock. */
-export const HEADER = { height: 92 };
+// Two panels side by side, each a 600 by 600 picture in its own local space.
+// Scene painters draw in panel-local coordinates (0..600 on both axes) and the
+// renderer translates the context to a panel's origin before calling them.
+export const PANEL = {
+  width: 600,
+  height: 600,
+  top: 118,
+  leftX: 24,
+  rightX: 656,
+  frame: 10, // wooden frame thickness drawn around each picture
+};
 
-/** The strip across the bottom that carries the controls reminder. */
-export const FOOTER = { top: 748, height: 52 };
+// Header furniture: title at the left, the remaining counter in the middle,
+// the clock at the right; the time bar runs the full width beneath it.
+export const HEADER = { height: 76 };
+export const TIME_BAR = { x: 24, y: 88, width: 1232, height: 12, radius: 6 };
 
-/**
- * The two picture panels. Each scene is painted in a panel's own coordinate
- * space, 600 wide by 640 tall, and the renderer translates the context to
- * the panel's corner before handing it to the painter.
- */
-export const PANEL = { width: 600, height: 640, top: 100, leftX: 24, rightX: 656, gap: 32 };
+// The strip under the panels carries the spoken status line and the key legend.
+export const STATUS = { y: 748 };
+export const LEGEND = { y: 778 };
 
-/** Seconds on the clock when a scene opens, by scene order. */
-export const SCENE_SECONDS = [150, 180, 210];
+// The economy of a hunt: what a miss costs, what a hint costs, how many hints.
+export const RULES = {
+  missPenaltySeconds: 4,
+  hintPenaltySeconds: 8,
+  hintsPerScene: 3,
+  hintSeconds: 7, // how long a hint ring stays on the pictures
+  lowTimeWarning: 10, // seconds left when the clock starts to tick aloud
+};
 
-/** What a wrong click costs, and what a hint costs, in seconds. */
-export const MISS_PENALTY_SECONDS = 4;
-export const HINT_COST_SECONDS = 8;
+// Star thresholds on a finished scene: one star for finishing at all, one for
+// keeping at least this share of the clock, one for never taking a hint.
+export const STAR_TIME_SHARE = 0.35;
 
-/** Hints a player may spend in one scene. */
-export const HINTS_PER_SCENE = 3;
-
-/** The radius, in panel units, inside which a click counts as a find. */
-export const FIND_RADIUS = 34;
-
-/** Colours shared by the frame, the HUD and every scene. */
+// Colours of the parlour: deep teal walls, lamplight gold, parchment text.
 export const INK = {
-  page: '#0d1322',
-  pageGlow: '#1b2745',
-  frame: '#2a1f16',
-  frameEdge: '#c9a35f',
-  parchment: '#f3e5c8',
-  parchmentDim: '#cbb98f',
-  brass: '#e8b64c',
-  good: '#7ee2a0',
-  bad: '#ff7a6b',
-  hint: '#8fd0ff',
-  marker: '#ffd94a',
-  markerSoft: 'rgba(255, 217, 74, 0.25)',
+  wallTop: '#17323a',
+  wallBottom: '#0b1a20',
+  parchment: '#f3e6c8',
+  parchmentDim: '#c9b995',
+  gold: '#e8b34a',
+  goldBright: '#ffd97a',
+  found: '#ffc94d',
+  miss: '#e06c5a',
+  frameDark: '#4a3220',
+  frameLight: '#7a5636',
+  veil: 'rgba(6, 14, 18, 0.72)',
 };
 
-/** Typefaces: household names only, so the game needs no font files. */
-export const TYPE = {
-  display: 'Georgia, "Times New Roman", serif',
-  body: '"Trebuchet MS", Verdana, Geneva, sans-serif',
-};
+// The fonts are generic families only, so the game needs no font files.
+export const FONT_DISPLAY = 'Georgia, "Times New Roman", serif';
+export const FONT_BODY = 'Verdana, Geneva, sans-serif';

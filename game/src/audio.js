@@ -1,76 +1,101 @@
-// Sound, synthesised in code: no audio files ride along with the game.
-// A find rings two bright notes, a miss thuds low, a hint chimes softly
-// and a finished scene plays a short rising figure. The context is made
-// lazily on the first sound after a player's gesture, as browsers require,
-// and M (or the toggle the input file wires) silences the whole set.
+// audio.js — the parlour's sounds, every one synthesised with WebAudio: a
+// two-note chime when a difference is found, a soft thud for a miss, a ping
+// for a hint, a tick for the last seconds, and a small arpeggio when a scene
+// is finished. No audio files: the kit is built from oscillators and gain
+// envelopes, and it stays silent until the first gesture wakes it, as
+// browsers require.
 
-let context = null;
-let muted = false;
+export class SoundKit {
+  constructor() {
+    this.ctx = null; // created lazily on the first user gesture
+    this.master = null;
+    this.muted = false;
+  }
 
-/** The shared AudioContext, created on first use; null where audio is unavailable. */
-function audioContext() {
-  if (context !== null) return context;
-  const Maker = window.AudioContext ?? window.webkitAudioContext;
-  if (Maker === undefined) return null;
-  context = new Maker();
-  return context;
-}
+  // Wake the audio context. Safe to call on every gesture; it only builds
+  // the graph once and resumes it when the browser has suspended it.
+  wake() {
+    if (!this.ctx) {
+      const AudioCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtor) return;
+      this.ctx = new AudioCtor();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : 0.5;
+      this.master.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === 'suspended') void this.ctx.resume();
+  }
 
-/** One soft-edged tone: a sine that swells in fast and decays away. */
-function tone(frequency, at, duration, volume, type = 'sine') {
-  const ctx = audioContext();
-  if (ctx === null || muted) return;
-  const start = ctx.currentTime + at;
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = type;
-  osc.frequency.value = frequency;
-  gain.gain.setValueAtTime(0, start);
-  gain.gain.linearRampToValueAtTime(volume, start + 0.012);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(start);
-  osc.stop(start + duration + 0.05);
-}
+  setMuted(muted) {
+    this.muted = muted;
+    if (this.master && this.ctx) {
+      this.master.gain.setTargetAtTime(muted ? 0 : 0.5, this.ctx.currentTime, 0.02);
+    }
+  }
 
-/** The find sound: a bell struck twice, the second note a fifth above. */
-export function playFind() {
-  tone(1318.5, 0, 0.35, 0.16);
-  tone(1975.5, 0.07, 0.45, 0.12);
-}
+  // One shaped tone: an oscillator with an attack-and-decay envelope.
+  tone(freq, { type = 'sine', at = 0, dur = 0.18, vol = 0.5, slide = 0 } = {}) {
+    if (!this.ctx || this.muted) return;
+    const t0 = this.ctx.currentTime + at;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+    osc.connect(gain);
+    gain.connect(this.master);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  }
 
-/** The miss sound: one low, dull knock. */
-export function playMiss() {
-  tone(146.8, 0, 0.18, 0.2, 'triangle');
-}
+  // A found difference: a bright two-note chime, like a spoon on glass.
+  find() {
+    this.tone(1318.5, { type: 'sine', dur: 0.22, vol: 0.42 });
+    this.tone(1760, { type: 'sine', at: 0.07, dur: 0.3, vol: 0.38 });
+    this.tone(2637, { type: 'triangle', at: 0.07, dur: 0.18, vol: 0.12 });
+  }
 
-/** The hint sound: a single high, quiet ping. */
-export function playHint() {
-  tone(1568, 0, 0.5, 0.07);
-}
+  // A miss: a low, soft thud that slides down — felt more than heard.
+  miss() {
+    this.tone(196, { type: 'square', dur: 0.16, vol: 0.16, slide: -70 });
+    this.tone(98, { type: 'sine', dur: 0.2, vol: 0.3, slide: -30 });
+  }
 
-/** The scene-complete sound: four notes climbing a major scale. */
-export function playSceneComplete() {
-  tone(523.25, 0, 0.3, 0.13);
-  tone(659.25, 0.11, 0.3, 0.13);
-  tone(783.99, 0.22, 0.3, 0.13);
-  tone(1046.5, 0.33, 0.55, 0.15);
-}
+  // A hint: a gentle ping that rises, as if pointing.
+  hint() {
+    this.tone(880, { type: 'sine', dur: 0.16, vol: 0.3 });
+    this.tone(1174.7, { type: 'sine', at: 0.09, dur: 0.24, vol: 0.3 });
+  }
 
-/** The game-complete sound: the climb, then a held chord. */
-export function playGameComplete() {
-  playSceneComplete();
-  tone(1318.5, 0.55, 0.8, 0.1);
-  tone(1568, 0.55, 0.8, 0.07);
-}
+  // The clock's last seconds: a dry tick.
+  tick() {
+    this.tone(1568, { type: 'square', dur: 0.045, vol: 0.1 });
+  }
 
-/** Flip the mute; returns the new state so the HUD can show it. */
-export function toggleMuted() {
-  muted = !muted;
-  return muted;
-}
+  // A small click for keys and buttons.
+  ui() {
+    this.tone(660, { type: 'triangle', dur: 0.07, vol: 0.2 });
+  }
 
-/** Whether sound is currently off. */
-export function isMuted() {
-  return muted;
+  // A scene finished: a rising arpeggio in a major key.
+  sceneDone() {
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((f, i) => this.tone(f, { type: 'triangle', at: i * 0.09, dur: 0.34, vol: 0.32 }));
+  }
+
+  // The whole game finished: the arpeggio, finished with a chord.
+  gameDone() {
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((f, i) => this.tone(f, { type: 'triangle', at: i * 0.09, dur: 0.4, vol: 0.3 }));
+    [523.25, 659.25, 783.99].forEach((f) => this.tone(f, { type: 'sine', at: 0.42, dur: 0.7, vol: 0.2 }));
+  }
+
+  // Time run out: two low notes, falling.
+  timeUp() {
+    this.tone(392, { type: 'triangle', dur: 0.3, vol: 0.3 });
+    this.tone(311.1, { type: 'triangle', at: 0.22, dur: 0.5, vol: 0.3 });
+  }
 }

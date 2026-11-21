@@ -1,255 +1,346 @@
-// Scene two: The Night Market. Three stalls under strings of lights, the
-// moon over the rooftops, everything for sale and half of it glowing. The
-// painter draws the market once; the `altered` set names which of the six
-// differences take their changed form, so the two panels are the same
-// painting but for exactly those six places.
-import { glow, hangingLantern, moon, starField, verticalGradient } from './paintkit.js';
+// scene-market.js — scene two: "The Night Market".
+// Three stalls under strings of lights, a moon over the rooftops. The painter
+// draws the scene once; the `altered` set names which of its six differences
+// take their changed form on the second telling: the full moon thinned to a
+// crescent, one bulb gone violet, the middle awning's stripes swapped, apples
+// turned to oranges, one bunting flag missing, one jar gone from the shelf.
+
+import {
+  skyGradient, disc, glow, starField, crescentMoon, sparkle,
+} from './paintkit.js';
 
 export const marketScene = {
   id: 'market',
   title: 'The Night Market',
+  subtitle: 'Scene two · six differences',
+  timeLimit: 180,
   differences: [
-    { id: 'moon', x: 84, y: 70, r: 30 },
-    { id: 'bulb', x: 413, y: 142, r: 24 },
-    { id: 'flag', x: 262, y: 252, r: 24 },
-    { id: 'awning', x: 307, y: 288, r: 46 },
-    { id: 'apples', x: 118, y: 438, r: 36 },
-    { id: 'jar', x: 520, y: 396, r: 26 },
+    { id: 'moon', label: 'the full moon, thinned to a crescent', x: 505, y: 92, r: 30 },
+    { id: 'bulb', label: 'a string-light bulb, gone violet', x: 300, y: 142, r: 16 },
+    { id: 'bunting', label: 'a bunting flag, missing', x: 300, y: 226, r: 18 },
+    { id: 'awning', label: 'the middle awning, stripes swapped', x: 300, y: 282, r: 40 },
+    { id: 'jar', label: 'a jar, gone from the shelf', x: 504, y: 332, r: 18 },
+    { id: 'fruit', label: 'the apples, turned to oranges', x: 68, y: 490, r: 30 },
   ],
   paint,
 };
 
-/** One stall's striped awning: a slanted canopy with a scalloped hem. */
-function awning(ctx, x0, x1, colourA, colourB) {
-  ctx.save();
+function paint(ctx, rng, altered) {
+  // Night sky over rooftop silhouettes.
+  ctx.fillStyle = skyGradient(ctx, 0, 0, 600, 600, [
+    [0, '#131a36'],
+    [0.55, '#1f2148'],
+    [1, '#2b2350'],
+  ]);
+  ctx.fillRect(0, 0, 600, 600);
+  starField(ctx, rng, 0, 0, 600, 210, 60, '#ffeecb');
+  ctx.fillStyle = '#0e1226';
   ctx.beginPath();
-  ctx.moveTo(x0 - 6, 310);
-  ctx.lineTo(x0 + 10, 272);
-  ctx.lineTo(x1 - 10, 272);
-  ctx.lineTo(x1 + 6, 310);
+  ctx.moveTo(0, 236);
+  ctx.lineTo(0, 196);
+  ctx.lineTo(70, 196);
+  ctx.lineTo(96, 168);
+  ctx.lineTo(150, 168);
+  ctx.lineTo(150, 236);
+  ctx.lineTo(452, 236);
+  ctx.lineTo(452, 182);
+  ctx.lineTo(520, 182);
+  ctx.lineTo(548, 206);
+  ctx.lineTo(600, 206);
+  ctx.lineTo(600, 236);
   ctx.closePath();
-  ctx.clip();
-  const stripe = 22;
-  for (let x = x0 - stripe, i = 0; x < x1 + stripe; x += stripe, i += 1) {
-    ctx.fillStyle = i % 2 === 0 ? colourA : colourB;
-    ctx.fillRect(x, 266, stripe, 50);
-  }
-  ctx.restore();
-  ctx.fillStyle = colourA;
-  for (let x = x0 + 2; x < x1 - 4; x += 18) {
-    ctx.beginPath();
-    ctx.arc(x + 7, 310, 7, 0, Math.PI);
-    ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(14, 10, 6, 0.6)';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(x0 - 6, 310);
-  ctx.lineTo(x0 + 10, 272);
-  ctx.lineTo(x1 - 10, 272);
-  ctx.lineTo(x1 + 6, 310);
-  ctx.stroke();
-}
+  ctx.fill();
 
-/** A stall: posts, a lamplit interior, a counter, and the awning above. */
-function stall(ctx, x0, x1, awningColours) {
-  // Interior, warm against the night.
-  verticalGradient(ctx, x0, 308, x1 - x0, 252, [[0, '#3a2438'], [1, '#241626']]);
-  // Posts.
-  ctx.fillStyle = '#17100b';
-  ctx.fillRect(x0 + 2, 300, 8, 260);
-  ctx.fillRect(x1 - 10, 300, 8, 260);
-  // Counter.
-  ctx.fillStyle = '#5a4030';
-  ctx.fillRect(x0 - 2, 452, x1 - x0 + 4, 16);
-  ctx.fillStyle = '#453122';
-  ctx.fillRect(x0 - 2, 468, x1 - x0 + 4, 92);
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
+  paintMoon(ctx, altered);
+  paintStringLights(ctx, altered);
+  paintBunting(ctx, altered);
+
+  // Ground: lamplit cobbles.
+  ctx.fillStyle = '#262036';
+  ctx.fillRect(0, 540, 600, 60);
+  ctx.strokeStyle = 'rgba(255, 220, 160, 0.10)';
   ctx.lineWidth = 2;
-  for (let x = x0 + 26; x < x1 - 8; x += 30) {
+  for (let i = 0; i < 26; i++) {
+    const x = rng.range(6, 580);
+    const y = rng.range(548, 592);
     ctx.beginPath();
-    ctx.moveTo(x, 472);
-    ctx.lineTo(x, 556);
+    ctx.arc(x, y, rng.range(7, 13), Math.PI * 1.1, Math.PI * 1.9);
     ctx.stroke();
   }
-  awning(ctx, x0, x1, awningColours[0], awningColours[1]);
+
+  paintStall(ctx, 26, ['#7a4a6e', '#efe3c2'], 'left', altered);
+  paintStall(ctx, 212, altered.has('awning') ? ['#2f8f83', '#efe3c2'] : ['#b03a34', '#efe3c2'], 'middle', altered);
+  paintStall(ctx, 404, ['#6e7a3a', '#efe3c2'], 'right', altered);
+  paintCrowd(ctx, rng);
 }
 
-/** A pyramid of round fruit on the left stall's counter. */
-function fruitPile(ctx, altered) {
-  const colour = altered.has('apples') ? '#e08a2e' : '#c93b2e';
-  const shade = altered.has('apples') ? '#b96f22' : '#9c2b21';
-  const spots = [[94, 444], [118, 444], [142, 444], [106, 426], [130, 426], [118, 408]];
-  for (const [x, y] of spots) {
-    ctx.fillStyle = colour;
-    ctx.beginPath();
-    ctx.arc(x, y, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = shade;
-    ctx.beginPath();
-    ctx.arc(x - 3, y + 4, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#4a3016';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(x, y - 11);
-    ctx.quadraticCurveTo(x + 2, y - 15, x + 5, y - 15);
-    ctx.stroke();
+// The moon: full and cratered on the first telling, a crescent on the second.
+function paintMoon(ctx, altered) {
+  glow(ctx, 505, 92, 62, 'rgba(246, 231, 189, 0.28)');
+  if (altered.has('moon')) {
+    crescentMoon(ctx, 505, 92, 29, '#f6e7bd', '#181f42');
+  } else {
+    disc(ctx, 505, 92, 29, '#f6e7bd');
+    ctx.fillStyle = 'rgba(190, 170, 130, 0.5)';
+    for (const [dx, dy, r] of [[-9, -6, 6], [8, 4, 8], [-2, 12, 5], [12, -11, 4]]) {
+      ctx.beginPath();
+      ctx.arc(505 + dx, 92 + dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 }
 
-/** Small jars on a shelf: body, neck and a cork, in a row. */
-function jarRow(ctx, xs, y, skipIndex = -1) {
-  xs.forEach((x, i) => {
-    if (i === skipIndex) return;
-    ctx.fillStyle = i % 2 === 0 ? 'rgba(150, 190, 200, 0.75)' : 'rgba(190, 160, 110, 0.8)';
+// Two swags of string lights. Every bulb is drawn from the curve itself, so
+// the special bulb — amber on the first telling, violet on the second — sits
+// exactly where its difference marker expects it.
+function paintStringLights(ctx, altered) {
+  const strands = [
+    { p0: [16, 50], pc: [300, 148], p1: [584, 50], special: false },
+    { p0: [16, 88], pc: [300, 196], p1: [584, 88], special: true },
+  ];
+  const palette = ['#ffd97a', '#ff9d6b', '#ffe9a8', '#ffb3c1'];
+  let n = 0;
+  for (const s of strands) {
+    ctx.strokeStyle = 'rgba(10, 10, 20, 0.85)';
+    ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.moveTo(x - 10, y);
-    ctx.lineTo(x - 10, y - 22);
-    ctx.quadraticCurveTo(x - 10, y - 30, x - 4, y - 30);
-    ctx.lineTo(x - 4, y - 36);
-    ctx.lineTo(x + 4, y - 36);
-    ctx.lineTo(x + 4, y - 30);
-    ctx.quadraticCurveTo(x + 10, y - 30, x + 10, y - 22);
-    ctx.lineTo(x + 10, y);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#8a6844';
-    ctx.fillRect(x - 4, y - 40, 8, 5);
-  });
+    ctx.moveTo(s.p0[0], s.p0[1]);
+    ctx.quadraticCurveTo(s.pc[0], s.pc[1], s.p1[0], s.p1[1]);
+    ctx.stroke();
+    for (let i = 0; i <= 12; i++) {
+      const t = 0.04 + (i / 12) * 0.92;
+      const x = (1 - t) * (1 - t) * s.p0[0] + 2 * (1 - t) * t * s.pc[0] + t * t * s.p1[0];
+      const y = (1 - t) * (1 - t) * s.p0[1] + 2 * (1 - t) * t * s.pc[1] + t * t * s.p1[1];
+      const isSpecial = s.special && i === 6;
+      ctx.strokeStyle = 'rgba(10, 10, 20, 0.85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + 7);
+      ctx.stroke();
+      if (isSpecial) {
+        const colour = altered.has('bulb') ? '#b18cff' : '#ffc94d';
+        glow(ctx, x, y + 13, 26, altered.has('bulb') ? 'rgba(177, 140, 255, 0.55)' : 'rgba(255, 201, 77, 0.55)');
+        disc(ctx, x, y + 13, 6.5, colour);
+      } else {
+        const colour = palette[n++ % palette.length];
+        glow(ctx, x, y + 12, 15, 'rgba(255, 190, 100, 0.30)');
+        disc(ctx, x, y + 12, 4.6, colour);
+      }
+    }
+  }
 }
 
-/** The string of lights across the sky, one bulb of which changes colour. */
-function stringLights(ctx, altered) {
-  const p0 = { x: 6, y: 92 };
-  const p1 = { x: 300, y: 196 };
-  const p2 = { x: 594, y: 104 };
-  ctx.strokeStyle = 'rgba(10, 8, 14, 0.9)';
+// A swag of bunting between the stall poles; on the second telling the
+// middle flag is gone, leaving a gap in the run.
+function paintBunting(ctx, altered) {
+  const p0 = [36, 196];
+  const pc = [300, 252];
+  const p1 = [564, 196];
+  ctx.strokeStyle = 'rgba(240, 230, 200, 0.6)';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(p0.x, p0.y);
-  ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+  ctx.moveTo(p0[0], p0[1]);
+  ctx.quadraticCurveTo(pc[0], pc[1], p1[0], p1[1]);
   ctx.stroke();
-  for (let i = 0; i <= 13; i += 1) {
-    const t = i / 13;
-    const x = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x;
-    const y = (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y;
-    const isDiff = i === 9;
-    const colour = isDiff && altered.has('bulb') ? '#9fd4ff' : '#ffca7a';
-    glow(ctx, x, y + 8, 20, isDiff && altered.has('bulb') ? 'rgba(140, 200, 255, 0.4)' : 'rgba(255, 180, 90, 0.35)');
-    ctx.fillStyle = colour;
-    ctx.beginPath();
-    ctx.arc(x, y + 8, 5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#191008';
-    ctx.fillRect(x - 2, y - 1, 4, 5);
-  }
-}
-
-/** Bunting across the stall tops; one flag of the row is a difference. */
-function bunting(ctx, altered) {
-  const colours = ['#c93b2e', '#e8b64c', '#2f7f7a', '#7a4a9e', '#e2703a'];
-  ctx.strokeStyle = 'rgba(10, 8, 14, 0.85)';
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(8, 238);
-  ctx.quadraticCurveTo(300, 262, 592, 238);
-  ctx.stroke();
-  for (let i = 0; i < 16; i += 1) {
-    const t = (i + 0.5) / 16;
-    const x = (1 - t) * (1 - t) * 8 + 2 * (1 - t) * t * 300 + t * t * 592;
-    const y = (1 - t) * (1 - t) * 238 + 2 * (1 - t) * t * 262 + t * t * 238;
-    if (altered.has('flag') && Math.abs(x - 262) < 18) continue;
+  const colours = ['#c03a30', '#e8b34a', '#2f8f83', '#b18cff', '#ff9d6b'];
+  for (let i = 0; i < 9; i++) {
+    const t = 0.08 + (i / 8) * 0.84;
+    if (altered.has('bunting') && i === 4) continue; // the missing flag
+    const x = (1 - t) * (1 - t) * p0[0] + 2 * (1 - t) * t * pc[0] + t * t * p1[0];
+    const y = (1 - t) * (1 - t) * p0[1] + 2 * (1 - t) * t * pc[1] + t * t * p1[1];
     ctx.fillStyle = colours[i % colours.length];
     ctx.beginPath();
-    ctx.moveTo(x - 10, y);
-    ctx.lineTo(x + 10, y);
+    ctx.moveTo(x - 11, y);
+    ctx.lineTo(x + 11, y);
     ctx.lineTo(x, y + 22);
     ctx.closePath();
     ctx.fill();
   }
 }
 
-function paint(ctx, altered) {
-  verticalGradient(ctx, 0, 0, 600, 260, [[0, '#0e1430'], [0.7, '#241c48'], [1, '#37255c']]);
-  starField(ctx, 7201, 70, 600, 170);
-  moon(ctx, 84, 70, 30, altered.has('moon'), '#141b3d');
-  // Rooftops along the horizon.
-  ctx.fillStyle = '#0d0f22';
-  ctx.beginPath();
-  ctx.moveTo(0, 262);
-  ctx.lineTo(0, 226);
-  ctx.lineTo(70, 226);
-  ctx.lineTo(104, 202);
-  ctx.lineTo(150, 226);
-  ctx.lineTo(268, 226);
-  ctx.lineTo(300, 208);
-  ctx.lineTo(336, 226);
-  ctx.lineTo(470, 226);
-  ctx.lineTo(512, 204);
-  ctx.lineTo(548, 226);
-  ctx.lineTo(600, 226);
-  ctx.lineTo(600, 262);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255, 201, 122, 0.85)';
-  for (const [x, y] of [[36, 240], [196, 242], [428, 240], [566, 242]]) ctx.fillRect(x, y, 7, 9);
-  stringLights(ctx, altered);
-  bunting(ctx, altered);
-  // The three stalls.
-  stall(ctx, 26, 208, ['#c93b2e', '#efe3c2']);
-  stall(ctx, 216, 398, altered.has('awning') ? ['#c93b2e', '#efe3c2'] : ['#2f7f5f', '#efe3c2']);
-  stall(ctx, 406, 580, ['#7a4a9e', '#efe3c2']);
-  // Goods. Left stall: the fruit pile and a lantern.
-  fruitPile(ctx, altered);
-  jarRow(ctx, [52, 82, 176], 408);
-  hangingLantern(ctx, 117, 316, 30, true);
-  // Middle stall: sacks of spice, bright mounds in open sacks.
-  for (const [x, colour] of [[252, '#d9a441'], [292, '#b8482e'], [332, '#7a9e3f'], [366, '#8a5aa0']]) {
-    ctx.fillStyle = '#6e5136';
-    ctx.beginPath();
-    ctx.ellipse(x, 446, 19, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(x - 19, 446, 38, 14);
-    ctx.fillStyle = colour;
-    ctx.beginPath();
-    ctx.ellipse(x, 444, 15, 7, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  hangingLantern(ctx, 307, 316, 30, true, '#ffc4a3');
-  // Right stall: a shelf of jars (one jar is a difference) and cloth bolts.
+// One market stall: posts, a striped awning, a counter and its own goods.
+// `which` says what the stall sells; the middle stall's awning stripes are a
+// difference, so its colours arrive already swapped or not.
+function paintStall(ctx, x, awningColours, which, altered) {
+  const w = 170;
+  // Posts and back shadow.
+  ctx.fillStyle = 'rgba(8, 8, 18, 0.35)';
+  ctx.fillRect(x + 6, 300, w - 12, 176);
   ctx.fillStyle = '#4a3423';
-  ctx.fillRect(420, 408, 146, 7);
-  jarRow(ctx, [448, 484, 520, 556], 408, altered.has('jar') ? 2 : -1);
-  for (const [x, colour] of [[436, '#2f7f7a'], [466, '#c93b2e'], [496, '#e8b64c']]) {
+  ctx.fillRect(x + 4, 296, 9, 182);
+  ctx.fillRect(x + w - 13, 296, 9, 182);
+  // Awning: a sloped canopy with stripes, clipped to its outline.
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x - 8, 306);
+  ctx.lineTo(x + w + 8, 306);
+  ctx.lineTo(x + w - 8, 252);
+  ctx.lineTo(x + 8, 252);
+  ctx.closePath();
+  ctx.clip();
+  const stripeW = 21;
+  for (let sx = x - 8, i = 0; sx < x + w + 8; sx += stripeW, i++) {
+    ctx.fillStyle = awningColours[i % 2];
+    ctx.fillRect(sx, 246, stripeW, 66);
+  }
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+  ctx.fillRect(x - 8, 292, w + 16, 20);
+  ctx.restore();
+  ctx.strokeStyle = '#33241a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x - 8, 306);
+  ctx.lineTo(x + w + 8, 306);
+  ctx.stroke();
+  // Counter.
+  ctx.fillStyle = '#5d4128';
+  ctx.fillRect(x, 432, w, 46);
+  ctx.fillStyle = '#77552f';
+  ctx.fillRect(x, 432, w, 8);
+  // A hanging lantern at the stall's front corner.
+  glow(ctx, x + w - 16, 330, 24, 'rgba(255, 196, 92, 0.4)');
+  disc(ctx, x + w - 16, 330, 6, '#ffd97a');
+
+  if (which === 'left') paintFruitCrates(ctx, x, altered);
+  if (which === 'middle') paintBreadCounter(ctx, x);
+  if (which === 'right') paintJarShelves(ctx, x, altered);
+}
+
+// In front of the left stall: a crate of round fruit — apples on the first
+// telling, oranges on the second — beside a crate of bottled cordial that
+// never changes.
+function paintFruitCrates(ctx, x, altered) {
+  const fruit = altered.has('fruit')
+    ? { skin: '#e8862e', dark: '#c56a1d', leaf: null }
+    : { skin: '#c03a30', dark: '#96281f', leaf: '#4a7a3a' };
+  const cx = x + 42;
+  const cy = 512;
+  // The fruit crate: slatted wood with the fruit heaped above its rim.
+  ctx.fillStyle = '#6e4f2c';
+  ctx.fillRect(cx - 34, cy - 6, 68, 34);
+  ctx.fillStyle = '#59391d';
+  ctx.fillRect(cx - 34, cy + 6, 68, 4);
+  ctx.fillRect(cx - 34, cy + 18, 68, 4);
+  const heap = [[-20, -12], [0, -16], [20, -12], [-10, -24], [11, -25], [0, -34]];
+  for (const [dx, dy] of heap) {
+    disc(ctx, cx + dx, cy + dy, 11, fruit.skin);
+    ctx.fillStyle = fruit.dark;
+    ctx.fillRect(cx + dx - 1, cy + dy - 12, 2, 4);
+    if (fruit.leaf) {
+      ctx.fillStyle = fruit.leaf;
+      ctx.beginPath();
+      ctx.ellipse(cx + dx + 5, cy + dy - 12, 5, 2.4, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // The cordial crate: four green bottles, the same on both tellings.
+  const bx = x + 118;
+  ctx.fillStyle = '#6e4f2c';
+  ctx.fillRect(bx - 34, cy - 6, 68, 34);
+  ctx.fillStyle = '#59391d';
+  ctx.fillRect(bx - 34, cy + 8, 68, 4);
+  for (const dx of [-24, -8, 8, 24]) {
+    ctx.fillStyle = '#3a6e46';
+    ctx.fillRect(bx + dx - 6, cy - 26, 12, 22);
+    ctx.fillRect(bx + dx - 3, cy - 36, 6, 11);
+    ctx.fillStyle = '#caa06a';
+    ctx.fillRect(bx + dx - 3, cy - 39, 6, 4);
+  }
+  // Loaves and a cheese wheel share the counter, unchanged.
+  ctx.fillStyle = '#d9a75e';
+  ctx.beginPath();
+  ctx.ellipse(x + 84, 424, 26, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// The middle stall sells bread: loaves on the counter, more on a back shelf.
+function paintBreadCounter(ctx, x) {
+  ctx.fillStyle = '#8a5a26';
+  ctx.fillRect(x + 14, 372, 142, 7);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = '#d9a75e';
+    ctx.beginPath();
+    ctx.ellipse(x + 36 + i * 36, 366, 15, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#b3803a';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x + 28 + i * 36, 362);
+    ctx.lineTo(x + 44 + i * 36, 362);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = '#e0b96e';
+    ctx.beginPath();
+    ctx.ellipse(x + 42 + i * 44, 424, 19, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A string of dried peppers hangs at the side, for colour.
+  ctx.strokeStyle = '#5d7a35';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x + 158, 380);
+  ctx.lineTo(x + 158, 424);
+  ctx.stroke();
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = '#c03a30';
+    ctx.beginPath();
+    ctx.ellipse(x + 158, 390 + i * 13, 5, 8, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// The right stall keeps preserves: two shelves of jars. On the second telling
+// one jar on the top shelf is gone, leaving a pale gap among its neighbours.
+function paintJarShelves(ctx, x, altered) {
+  const contents = ['#c03a30', '#e8862e', '#7a9a3a', '#b18cff', '#e8b34a', '#c56a8d'];
+  for (const shelfY of [348, 398]) {
+    ctx.fillStyle = '#4a3423';
+    ctx.fillRect(x + 16, shelfY, 138, 7);
+  }
+  const jarAt = (jx, shelfY, colour) => {
     ctx.fillStyle = colour;
-    ctx.fillRect(x, 470, 22, 62);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
-    ctx.fillRect(x, 470, 22, 8);
-  }
-  hangingLantern(ctx, 493, 316, 30, true);
-  // Cobbles and pools of lamplight.
-  verticalGradient(ctx, 0, 560, 600, 80, [[0, '#241a30'], [1, '#120d1c']]);
-  for (const x of [117, 307, 493]) glow(ctx, x, 596, 90, 'rgba(255, 180, 90, 0.13)');
-  ctx.fillStyle = 'rgba(200, 190, 220, 0.10)';
-  for (let i = 0; i < 26; i += 1) {
-    const x = (i * 67) % 600;
-    const y = 574 + ((i * 29) % 56);
     ctx.beginPath();
-    ctx.ellipse(x, y, 16, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  // Two shoppers, silhouettes in the foreground.
-  for (const [x, s] of [[52, 1], [556, 0.85]]) {
-    ctx.fillStyle = '#0a0714';
-    ctx.beginPath();
-    ctx.arc(x, 640 - 62 * s, 13 * s, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(x - 20 * s, 640);
-    ctx.quadraticCurveTo(x - 18 * s, 640 - 48 * s, x, 640 - 50 * s);
-    ctx.quadraticCurveTo(x + 18 * s, 640 - 48 * s, x + 20 * s, 640);
+    ctx.moveTo(jx - 10, shelfY);
+    ctx.lineTo(jx - 10, shelfY - 22);
+    ctx.quadraticCurveTo(jx - 10, shelfY - 30, jx - 4, shelfY - 30);
+    ctx.lineTo(jx + 4, shelfY - 30);
+    ctx.quadraticCurveTo(jx + 10, shelfY - 30, jx + 10, shelfY - 22);
+    ctx.lineTo(jx + 10, shelfY);
     ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#caa06a';
+    ctx.fillRect(jx - 7, shelfY - 36, 14, 7);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
+    ctx.fillRect(jx - 7, shelfY - 26, 4, 18);
+  };
+  // Top shelf: four jars; the third is the difference.
+  const topXs = [x + 40, x + 70, x + 100, x + 130];
+  topXs.forEach((jx, i) => {
+    if (altered.has('jar') && i === 2) return;
+    jarAt(jx, 348, contents[i]);
+  });
+  // Bottom shelf: three jars and a small stack of bowls.
+  [x + 44, x + 76, x + 108].forEach((jx, i) => jarAt(jx, 398, contents[i + 3]));
+  ctx.fillStyle = '#8d99ae';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.ellipse(x + 136, 392 - i * 6, 13, 5, 0, 0, Math.PI);
+    ctx.fill();
+  }
+}
+
+// Shoppers as soft silhouettes along the front, heads and shoulders only.
+function paintCrowd(ctx, rng) {
+  ctx.fillStyle = '#0c0e1a';
+  const spots = [58, 168, 262, 356, 452, 548];
+  for (const baseX of spots) {
+    const x = baseX + rng.range(-9, 9);
+    const headY = 566 + rng.range(-4, 4);
+    disc(ctx, x, headY, 13, '#0c0e1a');
+    ctx.beginPath();
+    ctx.ellipse(x, 612, 26, 24, 0, Math.PI, Math.PI * 2);
     ctx.fill();
   }
 }

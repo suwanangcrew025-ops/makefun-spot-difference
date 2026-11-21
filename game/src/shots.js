@@ -1,53 +1,61 @@
-// The screenshot scenes behind ?shot=cover|harbour|glasshouse|complete.
-// Each stages a real game state — a scene part-hunted, its rings on the
-// finds, the counter where a player would see it — and the boot code
-// paints it and sets window.__shotReady. The states are fixed, so the
-// same shot is the same frame every time it is taken.
-import { loadScene, SCREEN } from './engine.js';
-import { SCENES } from './scenes.js';
+// shots.js — the screenshot staging. With a ?shot= name in the address, the
+// game arranges itself into a posed, frozen moment of real play — a hunt in
+// mid-course, some differences ringed, some still hidden, the counter and
+// the clock where play would put them — and holds it still for the camera.
+// Nothing here is drawn that play itself could not produce: the staging only
+// sets the engine's own state, and the ordinary renderer draws the frame.
 
-function stage(game, sceneIndex, foundIds) {
-  loadScene(game, sceneIndex);
-  game.clock = 5;
-  for (const id of foundIds) game.found.add(id);
-  game.screen = SCREEN.PLAY;
-}
+import { sceneAt } from './scenes.js';
 
-/** Stage the named scene; returns false when the name is not a shot. */
-export function stageShot(game, name) {
-  switch (name) {
-    case 'cover': {
-      stage(game, 0, ['lamp', 'sail']);
-      game.secondsLeft = 103;
-      game.mistakes = 1;
-      // A ring still opening on the sail, as if clicked a moment ago.
-      game.effects.push({ kind: 'ring', x: 390, y: 394, r: 42, at: 4.62, span: 0.9 });
-      game.effects.push({ kind: 'spark', x: 390, y: 394, r: 42, at: 4.68, span: 0.7 });
-      return true;
-    }
-    case 'harbour': {
-      stage(game, 1, ['moon', 'apples', 'flag']);
-      game.secondsLeft = 121;
-      game.hintsLeft = 2;
-      return true;
-    }
-    case 'glasshouse': {
-      stage(game, 2, ['planter', 'butterfly']);
-      game.secondsLeft = 158;
-      game.hintId = 'cactus';
-      game.hintUntil = game.clock + 99;
-      return true;
-    }
-    case 'complete': {
-      stage(game, 2, SCENES[2].differences.map((difference) => difference.id));
-      game.totalFound = 18;
-      game.totalSeconds = 512;
-      game.mistakes = 3;
-      game.hintsUsed = 2;
-      game.screen = SCREEN.GAME_DONE;
-      return true;
-    }
-    default:
-      return false;
+// Pose the game for the named shot. Returns true when a shot was staged.
+export function stageShot(game, search) {
+  const shot = new URLSearchParams(search).get('shot');
+  if (!shot) return false;
+  game.frozen = true;
+  if (shot === 'cover') {
+    // The harbour, mid-hunt: the lamp and the stripe found, three to go,
+    // and the spark of the last find still in the air.
+    game.beginScene(0);
+    const scene = sceneAt(0);
+    game.found = new Set(['lamp', 'stripe']);
+    game.timeLeft = 117;
+    const stripe = scene.differences.find((d) => d.id === 'stripe');
+    game.effects = [{ kind: 'spark', x: stripe.x, y: stripe.y, panel: 'both', age: 0.3, life: 0.65 }];
+    game.announce('Found: the boat stripe, painted teal. 3 to go.');
+  } else if (shot === 'market') {
+    // The night market, mid-hunt: the bulb and the jar found, four to go.
+    game.beginScene(1);
+    game.found = new Set(['bulb', 'jar']);
+    game.timeLeft = 131;
+    game.hintsLeft = 2;
+    game.announce('Found: a jar, gone from the shelf. 4 to go.');
+  } else if (shot === 'glass') {
+    // The glasshouse, mid-hunt: three found, and a hint ring circling the
+    // butterfly while four still hide.
+    game.beginScene(2);
+    game.found = new Set(['pane', 'cactus', 'can']);
+    game.timeLeft = 148;
+    game.hintsLeft = 2;
+    game.hintId = 'butterfly';
+    game.hintTimeLeft = 5;
+    game.announce('A hint glimmers somewhere in the picture. 4 to go.');
+  } else if (shot === 'end') {
+    // The parlour complete: the last scene fully found behind the card that
+    // shows every scene's stars.
+    game.beginScene(2);
+    const scene = sceneAt(2);
+    game.found = new Set(scene.differences.map((d) => d.id));
+    game.timeLeft = 52;
+    game.results = [
+      { sceneId: 'harbour', title: 'Dusk at Lanternwick Harbour', stars: 3, timeLeft: 41, misses: 1, hintsUsed: 0 },
+      { sceneId: 'market', title: 'The Night Market', stars: 2, timeLeft: 18, misses: 3, hintsUsed: 1 },
+      { sceneId: 'glasshouse', title: 'The Glasshouse', stars: 3, timeLeft: 52, misses: 0, hintsUsed: 0 },
+    ];
+    game.screen = 'gameDone';
+    game.announce('The parlour is complete: 8 of 9 stars. Press R to play again.');
+  } else {
+    game.frozen = false;
+    return false;
   }
+  return true;
 }
