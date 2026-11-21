@@ -1,323 +1,283 @@
-// scene-harbour.js — scene one: "Dusk at Lanternwick Harbour".
-// A lighthouse point on the left, a fishing boat riding the middle water, a
-// stone quay in front. The painter draws the scene once; the `altered` set
-// names which of its five differences take their changed form on the second
-// telling: the lighthouse lamp dark, the boat's stripe another colour, the
-// sail another colour, one gull gone, the quay cat gone.
+// Scene 1 — Dusk at Lanternwick Harbour (5 differences, 150s).
+// A dusk harbour: striped lighthouse, two sailboats, gulls, a quay cat.
+// Each painter draws the scene once and takes an `altered` set naming
+// which differences take their changed form. Anything that can vanish
+// textures itself from its own seeded stream, so the two panels stay
+// pixel-identical everywhere else.
+import { glow, gull, moon, skyGradient, starField } from './paintkit.js';
+import { sceneStream, streamFor } from './random.js';
 
-import {
-  skyGradient, disc, glow, starField, waveBand, gullShape, crescentMoon, sparkle,
-} from './paintkit.js';
-
-export const harbourScene = {
+export const HARBOUR = {
   id: 'harbour',
-  title: 'Dusk at Lanternwick Harbour',
-  subtitle: 'Scene one · five differences',
-  timeLimit: 150,
+  name: 'Dusk at Lanternwick Harbour',
+  seconds: 150,
   differences: [
-    { id: 'lamp', label: 'the lighthouse lamp, gone dark', x: 120, y: 194, r: 26 },
-    { id: 'sail', label: 'the sail, dyed rust-red', x: 340, y: 400, r: 32 },
-    { id: 'stripe', label: 'the boat stripe, painted teal', x: 330, y: 482, r: 30 },
-    { id: 'gull', label: 'a gull, flown away', x: 455, y: 140, r: 22 },
-    { id: 'cat', label: 'the quay cat, vanished', x: 520, y: 490, r: 24 },
+    { id: 'lamp', x: 110, y: 180, r: 28, label: 'the lighthouse lamp' },
+    { id: 'sail', x: 315, y: 335, r: 34, label: 'the sail' },
+    { id: 'stripe', x: 435, y: 425, r: 24, label: 'the boat stripe' },
+    { id: 'gull', x: 270, y: 95, r: 20, label: 'the middle gull' },
+    { id: 'cat', x: 472, y: 502, r: 24, label: 'the quay cat' },
   ],
-  paint,
 };
 
-function paint(ctx, rng, altered) {
-  // Sky: indigo over violet over ember, down to a lit horizon.
-  ctx.fillStyle = skyGradient(ctx, 0, 0, 600, 600, [
-    [0, '#1c2342'],
-    [0.42, '#47355e'],
-    [0.66, '#a8543f'],
-    [0.72, '#e08a52'],
-    [1, '#e08a52'],
+const HORIZON = 330;
+const QUAY_TOP = 480;
+
+function paintSky(ctx, rng) {
+  skyGradient(ctx, 560, 560, [
+    [0, '#1b2140'],
+    [0.45, '#4a3560'],
+    [0.62, '#c96f4a'],
+    [0.66, '#e8a35c'],
+    [1, '#2e4a5e'],
   ]);
-  ctx.fillRect(0, 0, 600, 434);
-  starField(ctx, rng, 0, 0, 600, 250, 70, '#ffeecb');
-  crescentMoon(ctx, 508, 74, 25, '#f6e7bd', '#232a4c');
-  sparkle(ctx, 120, 90, 7, 'rgba(255, 238, 203, 0.8)');
-  sparkle(ctx, 330, 60, 5, 'rgba(255, 238, 203, 0.6)');
+  starField(ctx, rng, 560, 46, 8, 200);
+  moon(ctx, 482, 78, 26);
+  // Low sun glow on the horizon.
+  glow(ctx, 300, HORIZON, 150, '#f2a65e', 0.5);
+}
 
-  // Gulls riding the dusk. The middle one is a difference: on the second
-  // telling it has flown away.
-  gullShape(ctx, 250, 92, 17, '#2c2440');
-  if (!altered.has('gull')) gullShape(ctx, 455, 140, 15, '#2c2440');
-  gullShape(ctx, 385, 118, 12, '#2c2440');
-
-  // The far headland, a dark shoulder on the right.
-  ctx.fillStyle = '#33243e';
-  ctx.beginPath();
-  ctx.moveTo(430, 434);
-  ctx.quadraticCurveTo(500, 372, 600, 398);
-  ctx.lineTo(600, 434);
-  ctx.closePath();
-  ctx.fill();
-
-  // Sea: a deep band with scalloped wave lines and lamplight shimmer.
-  ctx.fillStyle = skyGradient(ctx, 0, 434, 600, 90, [
-    [0, '#4b3a55'],
-    [0.25, '#2e3352'],
-    [1, '#1a2138'],
-  ]);
-  ctx.fillRect(0, 434, 600, 88);
-  waveBand(ctx, rng, 8, 452, 584, '#8d7ba6', 0);
-  waveBand(ctx, rng, 8, 478, 584, '#6f5f8c', 0);
-  waveBand(ctx, rng, 8, 502, 584, '#57496f', 0);
-
-  paintLighthouse(ctx, altered);
-  paintFishingBoat(ctx, altered);
-  paintRowboat(ctx);
-
-  // The quay: a stone wall across the front, its top edge catching the dusk.
-  ctx.fillStyle = '#3b3247';
-  ctx.fillRect(0, 522, 600, 78);
-  ctx.fillStyle = '#584a63';
-  ctx.fillRect(0, 522, 600, 7);
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.28)';
+function paintSea(ctx) {
+  const g = ctx.createLinearGradient(0, HORIZON, 0, QUAY_TOP);
+  g.addColorStop(0, '#3d5a6e');
+  g.addColorStop(1, '#1d3242');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, HORIZON, 560, QUAY_TOP - HORIZON);
+  // Shimmer lines, from their own stream so nothing else depends on them.
+  const rng = streamFor('harbour', 'shimmer');
+  ctx.save();
+  ctx.strokeStyle = 'rgba(242, 200, 130, 0.35)';
   ctx.lineWidth = 2;
-  for (let x = 44; x < 600; x += 74) {
+  for (let i = 0; i < 26; i += 1) {
+    const y = HORIZON + 8 + rng() * (QUAY_TOP - HORIZON - 16);
+    const x = rng() * 560;
+    const len = 14 + rng() * 42;
+    ctx.globalAlpha = 0.25 + rng() * 0.5;
     ctx.beginPath();
-    ctx.moveTo(x, 532);
-    ctx.lineTo(x, 600);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + len, y);
     ctx.stroke();
   }
-  ctx.beginPath();
-  ctx.moveTo(0, 562);
-  ctx.lineTo(600, 562);
-  ctx.stroke();
-
-  paintLanternPost(ctx, 205);
-  paintLanternPost(ctx, 428);
-  if (!altered.has('cat')) paintCat(ctx);
+  ctx.restore();
 }
 
-// The lighthouse on its rocks, and its lamp — the scene's first difference.
-function paintLighthouse(ctx, altered) {
-  // Rocks: a tumble of dark shapes at the water's edge.
-  ctx.fillStyle = '#241d31';
-  for (const [x, y, r] of [[70, 452, 42], [128, 458, 52], [182, 452, 36], [104, 436, 34]]) {
-    ctx.beginPath();
-    ctx.arc(x, y, r, Math.PI, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillRect(28, 448, 210, 14);
-
-  // Tower: a tapering stack of cream and rust bands.
-  const bands = ['#e8dcc2', '#b4503f', '#e8dcc2', '#b4503f', '#e8dcc2'];
-  const topW = 21;
-  const botW = 33;
-  const topY = 208;
-  const botY = 446;
-  for (let i = 0; i < bands.length; i++) {
-    const y0 = topY + ((botY - topY) * i) / bands.length;
-    const y1 = topY + ((botY - topY) * (i + 1)) / bands.length;
-    const w0 = topW + ((botW - topW) * i) / bands.length;
-    const w1 = topW + ((botW - topW) * (i + 1)) / bands.length;
-    ctx.fillStyle = bands[i];
-    ctx.beginPath();
-    ctx.moveTo(120 - w0, y0);
-    ctx.lineTo(120 + w0, y0);
-    ctx.lineTo(120 + w1, y1);
-    ctx.lineTo(120 - w1, y1);
-    ctx.closePath();
-    ctx.fill();
-  }
-  // A small door and two windows up the tower.
-  ctx.fillStyle = '#33262b';
-  ctx.fillRect(112, 408, 16, 30);
-  ctx.fillRect(114, 322, 11, 15);
-  ctx.fillRect(114, 262, 11, 15);
-
-  // Gallery deck and lamp room.
-  ctx.fillStyle = '#2c2434';
-  ctx.fillRect(94, 196, 52, 12);
-  ctx.fillStyle = altered.has('lamp') ? '#3d4457' : '#ffd97a';
-  ctx.fillRect(103, 172, 34, 26);
-  ctx.strokeStyle = '#2c2434';
-  ctx.lineWidth = 3;
-  ctx.strokeRect(103, 172, 34, 26);
+function paintBoat1(ctx, altered) {
+  // Hull.
+  ctx.save();
+  ctx.fillStyle = '#5a3226';
   ctx.beginPath();
-  ctx.moveTo(120, 198);
-  ctx.lineTo(120, 172);
-  ctx.stroke();
-  // Roof: a shallow cap.
-  ctx.fillStyle = '#59332e';
-  ctx.beginPath();
-  ctx.moveTo(96, 172);
-  ctx.lineTo(120, 152);
-  ctx.lineTo(144, 172);
+  ctx.moveTo(272, 398);
+  ctx.lineTo(338, 398);
+  ctx.lineTo(326, 420);
+  ctx.lineTo(284, 420);
   ctx.closePath();
   ctx.fill();
+  // Mast and sail. The sail is the difference: cream, or rust-red.
+  ctx.strokeStyle = '#3a241a';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(305, 398);
+  ctx.lineTo(305, 262);
+  ctx.stroke();
+  ctx.fillStyle = altered.has('sail') ? '#b4502e' : '#f3e6c8';
+  ctx.beginPath();
+  ctx.moveTo(308, 266);
+  ctx.lineTo(308, 392);
+  ctx.lineTo(352, 392);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(58, 36, 26, 0.6)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
 
-  if (!altered.has('lamp')) {
-    // The lamp is lit: a glow, a beam over the water, and its reflection.
-    glow(ctx, 120, 185, 66, 'rgba(255, 205, 100, 0.5)');
-    disc(ctx, 120, 185, 8, '#fff3c4');
-    ctx.fillStyle = 'rgba(255, 214, 120, 0.13)';
-    ctx.beginPath();
-    ctx.moveTo(126, 178);
-    ctx.lineTo(430, 128);
-    ctx.lineTo(430, 268);
-    ctx.lineTo(126, 196);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255, 190, 90, 0.5)';
-    ctx.lineWidth = 2;
-    for (let i = 0; i < 6; i++) {
-      const y = 446 + i * 12;
-      const wob = (i % 2 === 0 ? -5 : 5);
+function paintBoat2(ctx, altered) {
+  ctx.save();
+  ctx.fillStyle = '#33455c';
+  ctx.beginPath();
+  ctx.moveTo(400, 414);
+  ctx.lineTo(468, 414);
+  ctx.lineTo(456, 438);
+  ctx.lineTo(412, 438);
+  ctx.closePath();
+  ctx.fill();
+  // Hull stripe: red, or teal when altered.
+  ctx.fillStyle = altered.has('stripe') ? '#2e7f7b' : '#c0392b';
+  ctx.fillRect(404, 420, 60, 7);
+  // Little cabin and mast.
+  ctx.fillStyle = '#d9c9a3';
+  ctx.fillRect(424, 398, 22, 16);
+  ctx.strokeStyle = '#2a2438';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(435, 398);
+  ctx.lineTo(435, 372);
+  ctx.stroke();
+  ctx.fillStyle = '#e8b64c';
+  ctx.beginPath();
+  ctx.moveTo(435, 372);
+  ctx.lineTo(435, 388);
+  ctx.lineTo(452, 388);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintLighthouse(ctx, altered) {
+  const lit = !altered.has('lamp');
+  ctx.save();
+  if (lit) {
+    // Reflection shimmering on the water below the lamp. It is drawn
+    // before the tower, so the tower occludes it where they overlap —
+    // the tower stands in front of the water.
+    const rng = streamFor('harbour', 'lamp-reflection');
+    ctx.strokeStyle = 'rgba(255, 233, 168, 0.5)';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 12; i += 1) {
+      const y = HORIZON + 6 + i * 11;
+      const w = 8 + rng() * 26;
+      ctx.globalAlpha = 0.35 + rng() * 0.45;
       ctx.beginPath();
-      ctx.moveTo(102 + wob, y);
-      ctx.lineTo(138 + wob, y);
+      ctx.moveTo(110 - w / 2, y);
+      ctx.lineTo(110 + w / 2, y);
       ctx.stroke();
     }
+    ctx.globalAlpha = 1;
   }
+  // Tower: cream with rust bands.
+  ctx.fillStyle = '#efe3c2';
+  ctx.beginPath();
+  ctx.moveTo(88, QUAY_TOP);
+  ctx.lineTo(94, 210);
+  ctx.lineTo(126, 210);
+  ctx.lineTo(132, QUAY_TOP);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#b4502e';
+  ctx.fillRect(90, 300, 40, 26);
+  ctx.fillRect(92, 380, 36, 26);
+  ctx.strokeStyle = 'rgba(60, 40, 20, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(88, QUAY_TOP);
+  ctx.lineTo(94, 210);
+  ctx.lineTo(126, 210);
+  ctx.lineTo(132, QUAY_TOP);
+  ctx.closePath();
+  ctx.stroke();
+  // Gallery and lamp room.
+  ctx.fillStyle = '#2a2438';
+  ctx.fillRect(86, 196, 48, 14);
+  ctx.fillRect(96, 168, 28, 28);
+  if (lit) {
+    glow(ctx, 110, 182, 70, '#ffe9a8', 0.65);
+    // Beam across the sky and the sea.
+    ctx.fillStyle = 'rgba(255, 233, 168, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(110, 182);
+    ctx.lineTo(560, 120);
+    ctx.lineTo(560, 210);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(110, 182);
+    ctx.lineTo(0, 150);
+    ctx.lineTo(0, 205);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff3c4';
+    ctx.beginPath();
+    ctx.arc(110, 182, 11, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    // Dark lamp: dull glass, no beam, no reflection.
+    ctx.fillStyle = '#3a3f4d';
+    ctx.beginPath();
+    ctx.arc(110, 182, 11, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Lamp-room roof.
+  ctx.fillStyle = '#2a2438';
+  ctx.beginPath();
+  ctx.moveTo(92, 168);
+  ctx.lineTo(128, 168);
+  ctx.lineTo(110, 148);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 }
 
-// The fishing boat: hull, stripe, mast and sail — two differences live here.
-function paintFishingBoat(ctx, altered) {
-  // Hull, riding at y 455..505.
-  ctx.fillStyle = '#5d3a2a';
-  ctx.beginPath();
-  ctx.moveTo(248, 458);
-  ctx.lineTo(414, 458);
-  ctx.lineTo(392, 502);
-  ctx.lineTo(272, 502);
-  ctx.closePath();
-  ctx.fill();
-  // The stripe along the hull: crimson on the first telling, teal on the second.
-  ctx.fillStyle = altered.has('stripe') ? '#2f8f83' : '#c03a30';
-  ctx.beginPath();
-  ctx.moveTo(254, 474);
-  ctx.lineTo(408, 474);
-  ctx.lineTo(400, 490);
-  ctx.lineTo(264, 490);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#3c2718';
-  ctx.fillRect(244, 450, 176, 9);
-  // Cabin block and a coil of rope.
-  ctx.fillStyle = '#77512f';
-  ctx.fillRect(352, 420, 44, 32);
-  ctx.fillStyle = '#ffd97a';
-  ctx.fillRect(364, 428, 12, 12);
-  ctx.strokeStyle = '#caa06a';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(282, 442, 9, 0, Math.PI * 2);
-  ctx.stroke();
-  // Mast and rigging.
-  ctx.strokeStyle = '#2e2019';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(318, 452);
-  ctx.lineTo(318, 306);
-  ctx.stroke();
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(318, 310);
-  ctx.lineTo(250, 452);
-  ctx.moveTo(318, 310);
-  ctx.lineTo(404, 420);
-  ctx.stroke();
-  // The sail: cream on the first telling, rust-red on the second.
-  ctx.fillStyle = altered.has('sail') ? '#b4503f' : '#efe3c2';
-  ctx.beginPath();
-  ctx.moveTo(324, 316);
-  ctx.lineTo(324, 446);
-  ctx.lineTo(402, 446);
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(70, 50, 30, 0.45)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(324, 356);
-  ctx.lineTo(378, 446);
-  ctx.moveTo(324, 398);
-  ctx.lineTo(352, 446);
-  ctx.stroke();
-  // A pennant at the masthead.
-  ctx.fillStyle = '#e8b34a';
-  ctx.beginPath();
-  ctx.moveTo(318, 306);
-  ctx.lineTo(342, 312);
-  ctx.lineTo(318, 320);
-  ctx.closePath();
-  ctx.fill();
+function paintGulls(ctx, altered) {
+  gull(ctx, 178, 112, 13);
+  if (!altered.has('gull')) gull(ctx, 270, 95, 14);
+  gull(ctx, 362, 138, 12);
 }
 
-// A small rowboat tied up on the right, with a pair of oars shipped.
-function paintRowboat(ctx) {
-  ctx.fillStyle = '#4c5a3a';
-  ctx.beginPath();
-  ctx.moveTo(452, 484);
-  ctx.lineTo(544, 484);
-  ctx.lineTo(528, 510);
-  ctx.lineTo(468, 510);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#66754c';
-  ctx.fillRect(448, 478, 100, 7);
-  ctx.strokeStyle = '#8a6f45';
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.moveTo(478, 482);
-  ctx.lineTo(452, 462);
-  ctx.moveTo(516, 482);
-  ctx.lineTo(544, 464);
-  ctx.stroke();
+function paintQuay(ctx, altered) {
+  ctx.save();
+  ctx.fillStyle = '#6b5a48';
+  ctx.fillRect(0, QUAY_TOP, 560, 80);
+  ctx.fillStyle = '#7d6c58';
+  ctx.fillRect(0, QUAY_TOP, 560, 10);
+  // Stone seams.
+  ctx.strokeStyle = 'rgba(40, 30, 20, 0.5)';
+  ctx.lineWidth = 2;
+  for (let x = 40; x < 560; x += 80) {
+    ctx.beginPath();
+    ctx.moveTo(x, QUAY_TOP + 10);
+    ctx.lineTo(x, 560);
+    ctx.stroke();
+  }
+  // Bollards and crates.
+  ctx.fillStyle = '#2a2438';
+  ctx.fillRect(30, 452, 14, 28);
+  ctx.fillRect(30, 444, 22, 10);
+  ctx.fillStyle = '#8a6a3e';
+  ctx.fillRect(520, 500, 34, 34);
+  ctx.fillRect(528, 486, 22, 14);
+  ctx.strokeStyle = 'rgba(40, 30, 20, 0.6)';
+  ctx.strokeRect(520, 500, 34, 34);
+  if (!altered.has('cat')) {
+    // The quay cat, sitting and watching the boats.
+    ctx.fillStyle = '#241f2e';
+    ctx.beginPath();
+    ctx.ellipse(472, 512, 13, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(472, 488, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(464, 480);
+    ctx.lineTo(466, 470);
+    ctx.lineTo(470, 479);
+    ctx.moveTo(478, 479);
+    ctx.lineTo(482, 470);
+    ctx.lineTo(484, 480);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(484, 520);
+    ctx.quadraticCurveTo(500, 516, 496, 500);
+    ctx.quadraticCurveTo(494, 512, 486, 514);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e8b64c';
+    ctx.beginPath();
+    ctx.arc(468, 487, 1.8, 0, Math.PI * 2);
+    ctx.arc(476, 487, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
-// A gas lantern on an iron post, standing on the quay.
-function paintLanternPost(ctx, x) {
-  ctx.strokeStyle = '#1f1a26';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.moveTo(x, 522);
-  ctx.lineTo(x, 468);
-  ctx.stroke();
-  glow(ctx, x, 458, 30, 'rgba(255, 196, 92, 0.45)');
-  ctx.fillStyle = '#ffd97a';
-  ctx.fillRect(x - 6, 448, 12, 16);
-  ctx.strokeStyle = '#1f1a26';
-  ctx.lineWidth = 2.5;
-  ctx.strokeRect(x - 6, 448, 12, 16);
-  ctx.beginPath();
-  ctx.moveTo(x - 9, 448);
-  ctx.lineTo(x, 438);
-  ctx.lineTo(x + 9, 448);
-  ctx.stroke();
-}
-
-// The harbourmaster's cat, sitting on the quay with its tail curled round.
-// On the second telling it has slipped away.
-function paintCat(ctx) {
-  ctx.fillStyle = '#191521';
-  // Tail, curled along the stones.
-  ctx.strokeStyle = '#191521';
-  ctx.lineWidth = 6;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(534, 512);
-  ctx.quadraticCurveTo(556, 512, 552, 494);
-  ctx.stroke();
-  // Body and head.
-  ctx.beginPath();
-  ctx.ellipse(520, 500, 16, 13, 0, 0, Math.PI * 2);
-  ctx.fill();
-  disc(ctx, 520, 478, 10.5, '#191521');
-  // Ears.
-  ctx.beginPath();
-  ctx.moveTo(512, 472);
-  ctx.lineTo(514, 461);
-  ctx.lineTo(519, 470);
-  ctx.closePath();
-  ctx.moveTo(521, 470);
-  ctx.lineTo(526, 461);
-  ctx.lineTo(528, 472);
-  ctx.closePath();
-  ctx.fill();
-  // One amber eye, watching the boats.
-  disc(ctx, 517, 477, 1.6, '#e8b34a');
+export function paintHarbour(ctx, altered, w = 560, h = 560) {
+  const rng = sceneStream('harbour');
+  paintSky(ctx, rng);
+  paintSea(ctx);
+  paintBoat1(ctx, altered);
+  paintBoat2(ctx, altered);
+  paintLighthouse(ctx, altered);
+  paintGulls(ctx, altered);
+  paintQuay(ctx, altered);
 }
