@@ -1,453 +1,370 @@
-// render.js — everything the parlour shows: the wall, the header with its
-// counter of what remains, the time bar, the two tellings of the scene inside
-// their frames, the gold rings and tick seals on differences found, the
-// dashed ring of a hint, the sparks and ripples of clicks, and the cards for
-// title, pause, a finished scene, a finished game and a faded clock. It only
-// reads the engine's state; it never changes it.
-
+// Drawing for Twice-Told Tides: the HUD, the two panels, found rings,
+// sparks, ripples, hint rings and the cards. All text uses generic
+// font families only, so the game needs no font files.
 import {
-  VIEW, PANEL, TIME_BAR, STATUS, LEGEND, INK, FONT_DISPLAY, FONT_BODY,
+  BTN_GAP, BTN_H, BTN_W, BTN_Y, CANVAS_H, CANVAS_W, FOOTER_Y,
+  HINT_RING_MS, PALETTE, PANEL_H, PANEL_LEFT_X, PANEL_RIGHT_X, PANEL_W, PANEL_Y,
+  RIPPLE_MS, SPARK_MS,
 } from './config.js';
-import { makeRng, sceneSeed } from './random.js';
-import { SCENES, sceneAt, allDifferenceIds } from './scenes.js';
-import { panelFrame, roundedRectPath, vignette } from './paintkit.js';
+import { alteredSet, SCENES } from './scenes.js';
+import {
+  SCREEN_GAME_DONE, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SCENE_DONE,
+  SCREEN_TIME_UP, SCREEN_TITLE, currentScene, remainingCount,
+} from './engine.js';
+import { hashStr, mulberry32 } from './random.js';
+import { roundRect } from './paintkit.js';
 
-export function drawFrame(ctx, game, now) {
-  drawWall(ctx);
-  if (game.screen === 'title') {
-    drawPanels(ctx, game, 0);
-    ctx.fillStyle = INK.veil;
-    ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-    drawTitleCard(ctx, game, now);
-    return;
-  }
-  drawHeader(ctx, game);
-  drawTimeBar(ctx, game);
-  drawPanels(ctx, game, game.sceneIndex);
-  drawStatusLine(ctx, game);
-  if (game.screen === 'paused') {
-    veilOver(ctx);
-    drawCentredCard(ctx, 560, 240, (c) => {
-      c.fillStyle = INK.parchment;
-      c.font = `44px ${FONT_DISPLAY}`;
-      c.fillText('Paused', VIEW.width / 2, VIEW.height / 2 - 16);
-      c.fillStyle = INK.parchmentDim;
-      c.font = `17px ${FONT_BODY}`;
-      c.fillText('The pictures wait, holding their breath.', VIEW.width / 2, VIEW.height / 2 + 28);
-      c.fillText('P — resume · R — restart the scene', VIEW.width / 2, VIEW.height / 2 + 62);
-    });
-  } else if (game.screen === 'sceneDone') {
-    veilOver(ctx);
-    drawSceneDoneCard(ctx, game);
-  } else if (game.screen === 'gameDone') {
-    veilOver(ctx);
-    drawGameDoneCard(ctx, game);
-  } else if (game.screen === 'timeUp') {
-    veilOver(ctx);
-    drawCentredCard(ctx, 620, 260, (c) => {
-      c.fillStyle = INK.parchment;
-      c.font = `40px ${FONT_DISPLAY}`;
-      c.fillText('The Light Has Faded', VIEW.width / 2, VIEW.height / 2 - 40);
-      c.fillStyle = INK.parchmentDim;
-      c.font = `18px ${FONT_BODY}`;
-      c.fillText(
-        `Out of time, with ${game.remaining()} difference${game.remaining() === 1 ? '' : 's'} still hidden.`,
-        VIEW.width / 2, VIEW.height / 2 + 8,
-      );
-      c.fillText('R — try the scene again', VIEW.width / 2, VIEW.height / 2 + 52);
-    });
-  }
+export const CARD = { x: 360, y: 190, w: 560, h: 400 };
+
+/** Header buttons, laid out from the right edge. Order: Hint, Pause, Sound. */
+export function headerButtons(game) {
+  const total = 3 * BTN_W + 2 * BTN_GAP;
+  const x0 = CANVAS_W - 48 - total;
+  return [
+    { id: 'hint', label: `Hint (${game.hintsLeft})`, x: x0, y: BTN_Y, w: BTN_W, h: BTN_H },
+    { id: 'pause', label: game.screen === SCREEN_PAUSED ? 'Resume' : 'Pause', x: x0 + BTN_W + BTN_GAP, y: BTN_Y, w: BTN_W, h: BTN_H },
+    { id: 'mute', label: game.muted ? 'Unmute' : 'Mute', x: x0 + 2 * (BTN_W + BTN_GAP), y: BTN_Y, w: BTN_W, h: BTN_H },
+  ];
 }
 
-// The parlour wall: a deep teal gradient, darker at the floor.
-function drawWall(ctx) {
-  const grad = ctx.createLinearGradient(0, 0, 0, VIEW.height);
-  grad.addColorStop(0, INK.wallTop);
-  grad.addColorStop(1, INK.wallBottom);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
+/** Buttons on the overlay cards, by screen. */
+export function cardButtons(screen) {
+  const y = CARD.y + CARD.h - 78;
+  const mk = (id, label, x) => ({ id, label, x, y, w: 200, h: 48 });
+  if (screen === SCREEN_TITLE) return [mk('start', 'Begin the hunt', CARD.x + 180)];
+  if (screen === SCREEN_SCENE_DONE) {
+    return [mk('next', 'Next scene  →', CARD.x + 40), mk('replay', 'Replay scene', CARD.x + 320)];
+  }
+  if (screen === SCREEN_GAME_DONE) return [mk('again', 'Play again', CARD.x + 180)];
+  if (screen === SCREEN_TIME_UP) return [mk('retry', 'Retry scene', CARD.x + 180)];
+  if (screen === SCREEN_PAUSED) return [mk('resume', 'Resume', CARD.x + 180)];
+  return [];
 }
 
-// The header: the scene's name at the left; in the middle the count of what
-// remains with a pip for every difference; at the right the clock and the
-// hints that are left.
-function drawHeader(ctx, game) {
-  const scene = game.scene;
+function formatTime(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function drawStars(ctx, x, y, count, size = 26) {
+  ctx.save();
+  ctx.font = `${size}px sans-serif`;
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = INK.gold;
-  ctx.font = `13px ${FONT_BODY}`;
-  ctx.fillText('T W I C E - T O L D   T I D E S', 24, 28);
-  ctx.fillStyle = INK.parchment;
-  ctx.font = `25px ${FONT_DISPLAY}`;
-  ctx.fillText(scene.title, 24, 60);
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < 3; i += 1) {
+    ctx.fillStyle = i < count ? PALETTE.gold : 'rgba(255,255,255,0.25)';
+    ctx.fillText('★', x + i * (size + 6), y);
+  }
+  ctx.restore();
+}
 
-  // Centre: the remaining counter and its pips.
+function drawPanelLabel(ctx, x, label) {
+  ctx.save();
+  ctx.font = '600 13px sans-serif';
+  ctx.fillStyle = PALETTE.paper;
+  ctx.globalAlpha = 0.85;
   ctx.textAlign = 'center';
-  ctx.fillStyle = INK.parchment;
-  ctx.font = `30px ${FONT_DISPLAY}`;
-  const remaining = game.remaining();
-  ctx.fillText(remaining === 0 ? 'All found' : `${remaining} to find`, VIEW.width / 2, 42);
-  const total = scene.differences.length;
-  const pipGap = 17;
-  const startX = VIEW.width / 2 - ((total - 1) * pipGap) / 2;
-  scene.differences.forEach((d, i) => {
-    const x = startX + i * pipGap;
-    ctx.beginPath();
-    ctx.arc(x, 58, 5.5, 0, Math.PI * 2);
-    if (game.found.has(d.id)) {
-      ctx.fillStyle = INK.found;
-      ctx.fill();
-    } else {
-      ctx.strokeStyle = INK.parchmentDim;
-      ctx.lineWidth = 1.6;
-      ctx.stroke();
-    }
-  });
-
-  // Right: the clock, the hints, and the mute state.
-  ctx.textAlign = 'right';
-  ctx.fillStyle = game.timeLeft <= 10 && game.screen === 'playing' ? INK.miss : INK.parchment;
-  ctx.font = `30px ${FONT_DISPLAY}`;
-  ctx.fillText(formatTime(game.timeLeft), VIEW.width - 24, 42);
-  ctx.fillStyle = INK.parchmentDim;
-  ctx.font = `13px ${FONT_BODY}`;
-  const soundNote = game.sound.muted ? ' · sound off (M)' : '';
-  ctx.fillText(`Hints left: ${game.hintsLeft} (H)${soundNote}`, VIEW.width - 24, 62);
-  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + PANEL_W / 2, PANEL_Y - 14);
+  ctx.restore();
 }
 
-// The time bar: a full-width track whose fill drains with the clock and
-// shifts green to amber to red as it empties.
-function drawTimeBar(ctx, game) {
-  const scene = game.scene;
-  const fraction = Math.max(0, Math.min(1, game.timeLeft / scene.timeLimit));
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-  roundedRectPath(ctx, TIME_BAR.x, TIME_BAR.y, TIME_BAR.width, TIME_BAR.height, TIME_BAR.radius);
-  ctx.fill();
-  if (fraction > 0) {
-    ctx.fillStyle = timeColour(fraction);
-    roundedRectPath(ctx, TIME_BAR.x, TIME_BAR.y, TIME_BAR.width * fraction, TIME_BAR.height, TIME_BAR.radius);
-    ctx.fill();
-  }
-  ctx.strokeStyle = 'rgba(243, 230, 200, 0.25)';
-  ctx.lineWidth = 1;
-  roundedRectPath(ctx, TIME_BAR.x, TIME_BAR.y, TIME_BAR.width, TIME_BAR.height, TIME_BAR.radius);
-  ctx.stroke();
-}
-
-function timeColour(fraction) {
-  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
-  const green = [87, 201, 138];
-  const amber = [232, 179, 74];
-  const red = [217, 95, 74];
-  const [from, to, t] = fraction > 0.5 ? [amber, green, (fraction - 0.5) * 2] : [red, amber, fraction * 2];
-  return `rgb(${lerp(from[0], to[0], t)}, ${lerp(from[1], to[1], t)}, ${lerp(from[2], to[2], t)})`;
-}
-
-// Both tellings of a scene, in their frames, with every marker and effect
-// that belongs to the hunt drawn over them.
-function drawPanels(ctx, game, sceneIndex) {
-  const scene = sceneAt(sceneIndex);
-  const isLiveScene = sceneIndex === game.sceneIndex && game.screen !== 'title';
-  drawPanelLabel(ctx, PANEL.leftX, 'THE FIRST TELLING', 'left');
-  drawPanelLabel(ctx, PANEL.rightX + PANEL.width, 'THE SECOND TELLING', 'right');
-  for (const panel of [0, 1]) {
-    const x = panel === 0 ? PANEL.leftX : PANEL.rightX;
-    panelFrame(ctx, x, PANEL.top, PANEL.width, PANEL.height, INK);
+function drawPanels(ctx, game, nowMs) {
+  const scene = currentScene(game);
+  const original = new Set();
+  const changed = alteredSet(scene, scene.differences.map((d) => d.id));
+  const panels = [
+    { x: PANEL_LEFT_X, altered: original },
+    { x: PANEL_RIGHT_X, altered: changed },
+  ];
+  for (const panel of panels) {
     ctx.save();
-    roundedRectPath(ctx, x, PANEL.top, PANEL.width, PANEL.height, 4);
+    ctx.beginPath();
+    ctx.rect(panel.x, PANEL_Y, PANEL_W, PANEL_H);
     ctx.clip();
-    ctx.translate(x, PANEL.top);
-    const altered = panel === 1 ? allDifferenceIds(scene) : new Set();
-    scene.paint(ctx, makeRng(sceneSeed(sceneIndex)), altered);
-    // A vignette inside each panel, centred on the panel itself, so it
-    // shades both tellings in exactly the same way.
-    vignette(ctx, 0, 0, PANEL.width, PANEL.height, 0.15);
-    if (isLiveScene) {
-      drawHintRing(ctx, game);
-      for (const d of scene.differences) {
-        if (game.found.has(d.id)) drawFoundMarker(ctx, d);
-      }
-      for (const fx of game.effects) {
-        if (fx.panel === 'both' || fx.panel === panel) drawEffect(ctx, fx);
-      }
-    }
+    ctx.translate(panel.x, PANEL_Y);
+    scene.paint(ctx, panel.altered);
+    ctx.restore();
+    // Frame.
+    ctx.save();
+    ctx.strokeStyle = PALETTE.panelEdge;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(panel.x, PANEL_Y, PANEL_W, PANEL_H);
     ctx.restore();
   }
+  drawPanelLabel(ctx, PANEL_LEFT_X, 'O R I G I N A L');
+  drawPanelLabel(ctx, PANEL_RIGHT_X, 'C H A N G E D');
+  drawMarks(ctx, game, nowMs);
 }
 
-function drawPanelLabel(ctx, x, text, align) {
-  ctx.fillStyle = INK.parchmentDim;
-  ctx.font = `12px ${FONT_BODY}`;
-  ctx.textAlign = align;
-  ctx.fillText(text, x, 82);
-  ctx.textAlign = 'left';
-}
-
-// The mark of a find: a gold ring around the difference, and a small round
-// seal with a tick riding on the ring's shoulder — drawn on both tellings.
-function drawFoundMarker(ctx, d) {
-  const ringR = d.r + 9;
-  ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.lineWidth = 5.5;
+function drawFoundRing(ctx, px, py, diff, nowMs, foundAt) {
+  ctx.save();
+  // Gold ring with a tick seal.
+  ctx.strokeStyle = PALETTE.gold;
+  ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.arc(d.x, d.y, ringR, 0, Math.PI * 2);
+  ctx.arc(px, py, diff.r + 6, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.strokeStyle = INK.found;
-  ctx.lineWidth = 3.2;
+  ctx.strokeStyle = PALETTE.goldDeep;
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(d.x, d.y, ringR, 0, Math.PI * 2);
+  ctx.arc(px, py, diff.r + 11, 0, Math.PI * 2);
   ctx.stroke();
-  // The seal: a gold disc on the ring at its upper right, ticked in ink.
-  const sx = d.x + ringR * Math.cos(-0.72);
-  const sy = d.y + ringR * Math.sin(-0.72);
-  ctx.fillStyle = INK.gold;
+  ctx.fillStyle = PALETTE.gold;
   ctx.beginPath();
-  ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+  ctx.arc(px, py, 13, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#5d4128';
-  ctx.lineWidth = 1.6;
-  ctx.stroke();
-  ctx.strokeStyle = '#3a2a12';
-  ctx.lineWidth = 2.6;
+  ctx.strokeStyle = '#1c2438';
+  ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(sx - 5, sy + 0.5);
-  ctx.lineTo(sx - 1.4, sy + 4.2);
-  ctx.lineTo(sx + 5.4, sy - 3.8);
+  ctx.moveTo(px - 6, py);
+  ctx.lineTo(px - 1, py + 5);
+  ctx.lineTo(px + 7, py - 5);
   ctx.stroke();
-}
-
-// The hint: a dashed gold ring that breathes around the difference it means,
-// turning slowly so the eye catches it.
-function drawHintRing(ctx, game) {
-  if (!game.hintId) return;
-  const d = game.scene.differences.find((item) => item.id === game.hintId);
-  if (!d) return;
-  const t = game.frozen ? game.stagePhase : game.gameTime;
-  const r = d.r + 14 + Math.sin(t * 4) * 3;
-  ctx.save();
-  ctx.strokeStyle = INK.goldBright;
-  ctx.lineWidth = 3;
-  ctx.setLineDash([9, 7]);
-  ctx.lineDashOffset = -t * 26;
-  ctx.beginPath();
-  ctx.arc(d.x, d.y, r, 0, Math.PI * 2);
-  ctx.stroke();
+  // Spark burst, fading over SPARK_MS after the find.
+  const age = nowMs - (foundAt ?? nowMs);
+  if (age < SPARK_MS) {
+    const t = age / SPARK_MS;
+    const rng = mulberry32(hashStr(`spark:${diff.id}`));
+    for (let i = 0; i < 10; i += 1) {
+      const angle = rng() * Math.PI * 2;
+      const dist = (diff.r + 8) + t * 34;
+      const sx = px + Math.cos(angle) * dist;
+      const sy = py + Math.sin(angle) * dist;
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = i % 2 === 0 ? '#ffe9a8' : PALETTE.gold;
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3.5 - t * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 }
 
-// One click effect: the starburst of a find, or the ripple of a miss with
-// its lost seconds floating up.
-function drawEffect(ctx, fx) {
-  const p = Math.min(1, fx.age / fx.life);
-  if (fx.kind === 'spark') {
-    ctx.save();
-    ctx.globalAlpha = 1 - p;
-    ctx.strokeStyle = INK.goldBright;
-    ctx.lineWidth = 2.6;
-    ctx.lineCap = 'round';
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + 0.39;
-      const r1 = 9 + p * 12;
-      const r2 = 17 + p * 26;
-      ctx.beginPath();
-      ctx.moveTo(fx.x + Math.cos(a) * r1, fx.y + Math.sin(a) * r1);
-      ctx.lineTo(fx.x + Math.cos(a) * r2, fx.y + Math.sin(a) * r2);
-      ctx.stroke();
+function drawMarks(ctx, game, nowMs) {
+  const scene = currentScene(game);
+  const origins = [PANEL_LEFT_X, PANEL_RIGHT_X];
+  // Found rings on both panels.
+  for (const diff of scene.differences) {
+    if (!game.found.has(diff.id)) continue;
+    for (const ox of origins) {
+      drawFoundRing(ctx, ox + diff.x, PANEL_Y + diff.y, diff, nowMs, game.foundAt.get(diff.id));
     }
-    ctx.strokeStyle = INK.found;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(fx.x, fx.y, 10 + p * 30, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  } else {
+  }
+  // Hint ring: a dashed pulsing circle on the unfound difference.
+  if (game.hintTarget && nowMs < game.hintUntil) {
+    const diff = scene.differences.find((d) => d.id === game.hintTarget);
+    if (diff) {
+      const pulse = 1 + 0.12 * Math.sin(nowMs / 130);
+      ctx.save();
+      ctx.strokeStyle = PALETTE.gold;
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -nowMs / 40;
+      for (const ox of origins) {
+        ctx.beginPath();
+        ctx.arc(ox + diff.x, PANEL_Y + diff.y, (diff.r + 10) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+  // Miss ripple on the panel that was clicked.
+  if (game.missAt && nowMs - game.missAt.at < RIPPLE_MS) {
+    const t = (nowMs - game.missAt.at) / RIPPLE_MS;
+    const ox = game.missAt.panel === 0 ? PANEL_LEFT_X : PANEL_RIGHT_X;
     ctx.save();
-    ctx.globalAlpha = (1 - p) * 0.9;
-    ctx.strokeStyle = INK.miss;
+    ctx.globalAlpha = 1 - t;
+    ctx.strokeStyle = '#ff6b5e';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.arc(fx.x, fx.y, 6 + p * 30, 0, Math.PI * 2);
+    ctx.arc(ox + game.missAt.x, PANEL_Y + game.missAt.y, 8 + t * 42, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillStyle = INK.miss;
-    ctx.font = `bold 15px ${FONT_BODY}`;
+    ctx.fillStyle = '#ff6b5e';
+    ctx.font = '700 20px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('-4s', fx.x, fx.y - 16 - p * 18);
+    ctx.fillText('−4s', ox + game.missAt.x, PANEL_Y + game.missAt.y - 26 - t * 18);
     ctx.restore();
   }
 }
 
-// The spoken status line and the key legend, under the panels.
-function drawStatusLine(ctx, game) {
-  ctx.textAlign = 'center';
-  ctx.fillStyle = INK.parchment;
-  ctx.font = `italic 17px ${FONT_DISPLAY}`;
-  ctx.fillText(game.status, VIEW.width / 2, STATUS.y, VIEW.width - 80);
-  ctx.fillStyle = INK.parchmentDim;
-  ctx.font = `12.5px ${FONT_BODY}`;
-  ctx.fillText(
-    'Click a difference to mark it · H hint · P pause · M sound · R restart scene · N next scene · Enter begin',
-    VIEW.width / 2, LEGEND.y,
-  );
-  ctx.textAlign = 'left';
-}
-
-function veilOver(ctx) {
-  ctx.fillStyle = INK.veil;
-  ctx.fillRect(0, 0, VIEW.width, VIEW.height);
-}
-
-// A centred card with a gold-ruled frame; the painter callback draws its
-// words, centred, at the canvas middle.
-function drawCentredCard(ctx, w, h, painter) {
-  const x = (VIEW.width - w) / 2;
-  const y = (VIEW.height - h) / 2;
-  ctx.fillStyle = 'rgba(10, 24, 30, 0.97)';
-  roundedRectPath(ctx, x, y, w, h, 16);
-  ctx.fill();
-  ctx.strokeStyle = INK.gold;
-  ctx.lineWidth = 2;
-  roundedRectPath(ctx, x, y, w, h, 16);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(232, 179, 74, 0.35)';
-  ctx.lineWidth = 1;
-  roundedRectPath(ctx, x + 8, y + 8, w - 16, h - 16, 11);
-  ctx.stroke();
+function drawHud(ctx, game) {
+  const scene = currentScene(game);
   ctx.save();
-  ctx.textAlign = 'center';
-  painter(ctx);
+  // Title and scene name.
+  ctx.fillStyle = PALETTE.paper;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = '700 24px Georgia, serif';
+  ctx.fillText('Twice-Told Tides', 48, 30);
+  ctx.font = '400 14px sans-serif';
+  ctx.globalAlpha = 0.8;
+  ctx.fillText(scene.name, 48, 56);
+  ctx.globalAlpha = 1;
+
+  // Timer bar.
+  const barX = 400;
+  const barY = 24;
+  const barW = 330;
+  const fraction = Math.max(0, game.timeLeft / scene.seconds);
+  const barColour = fraction > 0.5 ? PALETTE.good : fraction > 0.25 ? PALETTE.warn : PALETTE.bad;
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  roundRect(ctx, barX, barY, barW, 18, 9);
+  ctx.fill();
+  ctx.fillStyle = barColour;
+  if (fraction > 0) {
+    roundRect(ctx, barX, barY, Math.max(18, barW * fraction), 18, 9);
+    ctx.fill();
+  }
+  ctx.font = '700 18px sans-serif';
+  ctx.fillStyle = PALETTE.paper;
+  ctx.fillText(formatTime(game.timeLeft), barX + barW + 14, barY + 9);
+  ctx.font = '400 12px sans-serif';
+  ctx.globalAlpha = 0.75;
+  ctx.fillText('time left', barX, barY + 32);
+  ctx.globalAlpha = 1;
+
+  // Remaining counter with pips.
+  const total = scene.differences.length;
+  const found = game.found.size;
+  const counterX = 800;
+  ctx.font = '700 18px sans-serif';
+  ctx.fillStyle = PALETTE.paper;
+  ctx.fillText(`${found} / ${total} found`, counterX, 30);
+  for (let i = 0; i < total; i += 1) {
+    ctx.beginPath();
+    ctx.arc(counterX + 8 + i * 18, 56, 6, 0, Math.PI * 2);
+    ctx.fillStyle = i < found ? PALETTE.gold : 'rgba(255,255,255,0.25)';
+    ctx.fill();
+  }
+
+  // Header buttons.
+  for (const btn of headerButtons(game)) {
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 1.5;
+    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8);
+    ctx.stroke();
+    ctx.fillStyle = PALETTE.paper;
+    ctx.font = '600 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
+  }
   ctx.restore();
 }
 
-// The title card: the game's name, its premise, the three scenes with the
-// stars they have earned, and the way in.
-function drawTitleCard(ctx, game, now) {
-  drawCentredCard(ctx, 760, 430, (c) => {
-    const cy = VIEW.height / 2;
-    c.fillStyle = INK.gold;
-    c.font = `15px ${FONT_BODY}`;
-    c.fillText('A  S P O T - T H E - D I F F E R E N C E   P A R L O U R', VIEW.width / 2, cy - 168);
-    c.fillStyle = INK.parchment;
-    c.font = `62px ${FONT_DISPLAY}`;
-    c.fillText('Twice-Told Tides', VIEW.width / 2, cy - 104);
-    c.fillStyle = INK.parchmentDim;
-    c.font = `italic 18px ${FONT_DISPLAY}`;
-    c.fillText('Every picture here is told twice — and the second telling always changes something.', VIEW.width / 2, cy - 62);
-    c.font = `16px ${FONT_BODY}`;
-    c.fillText('Find each change before the clock runs out. A miss costs 4 seconds; a hint costs 8.', VIEW.width / 2, cy - 34);
-    // The three scenes, with the stars they hold so far.
-    SCENES.forEach((scene, i) => {
-      const y = cy + 12 + i * 40;
-      const result = game.results.find((r) => r.sceneId === scene.id);
-      c.fillStyle = INK.parchment;
-      c.font = `19px ${FONT_DISPLAY}`;
-      c.textAlign = 'left';
-      c.fillText(`${['I', 'II', 'III'][i]}.  ${scene.title}`, VIEW.width / 2 - 268, y);
-      c.textAlign = 'center';
-      c.fillStyle = INK.parchmentDim;
-      c.font = `14px ${FONT_BODY}`;
-      c.textAlign = 'right';
-      c.fillText(`${scene.differences.length} differences · ${scene.timeLimit}s`, VIEW.width / 2 + 192, y);
-      c.textAlign = 'center';
-      for (let s = 0; s < 3; s++) {
-        drawStar(c, VIEW.width / 2 + 218 + s * 26, y - 6, 9, result ? s < result.stars : false);
-      }
-    });
-    const pulse = 0.65 + 0.35 * Math.sin(now * 2.4);
-    c.globalAlpha = pulse;
-    c.fillStyle = INK.goldBright;
-    c.font = `20px ${FONT_DISPLAY}`;
-    c.fillText('Click, or press Enter, to begin', VIEW.width / 2, cy + 168);
-    c.globalAlpha = 1;
-  });
+function drawFooter(ctx, game) {
+  ctx.save();
+  ctx.fillStyle = PALETTE.paper;
+  ctx.globalAlpha = 0.75;
+  ctx.font = '400 14px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Click a difference  ·  H hint (−8s)  ·  P pause  ·  M mute  ·  R restart scene  ·  N next', 48, FOOTER_Y + 26);
+  // Scene progress: dots and stars earned so far.
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'right';
+  ctx.fillText(`Scene ${game.sceneIndex + 1} of ${SCENES.length}`, CANVAS_W - 48, FOOTER_Y + 26);
+  ctx.restore();
 }
 
-// A finished scene's card: its stars, its numbers, and the way on.
-function drawSceneDoneCard(ctx, game) {
-  const result = game.results[game.results.length - 1];
-  if (!result) return;
-  drawCentredCard(ctx, 640, 330, (c) => {
-    const cy = VIEW.height / 2;
-    c.fillStyle = INK.parchment;
-    c.font = `38px ${FONT_DISPLAY}`;
-    c.fillText('Scene Complete', VIEW.width / 2, cy - 104);
-    c.fillStyle = INK.parchmentDim;
-    c.font = `italic 19px ${FONT_DISPLAY}`;
-    c.fillText(result.title, VIEW.width / 2, cy - 68);
-    for (let s = 0; s < 3; s++) {
-      drawStar(c, VIEW.width / 2 + (s - 1) * 62, cy - 12, 24, s < result.stars);
-    }
-    c.fillStyle = INK.parchment;
-    c.font = `16.5px ${FONT_BODY}`;
-    c.fillText(
-      `Time to spare ${formatTime(result.timeLeft)} · Misses ${result.misses} · Hints used ${result.hintsUsed}`,
-      VIEW.width / 2, cy + 52,
-    );
-    c.fillStyle = INK.parchmentDim;
-    c.font = `15px ${FONT_BODY}`;
-    const last = game.sceneIndex + 1 >= SCENES.length;
-    c.fillText(last ? 'N — see how the parlour scored you · R — play it again' : 'N — next scene · R — play it again', VIEW.width / 2, cy + 92);
-  });
-}
-
-// The whole game's card: every scene with its stars, and the total.
-function drawGameDoneCard(ctx, game) {
-  drawCentredCard(ctx, 680, 400, (c) => {
-    const cy = VIEW.height / 2;
-    c.fillStyle = INK.parchment;
-    c.font = `40px ${FONT_DISPLAY}`;
-    c.fillText('The Parlour Is Complete', VIEW.width / 2, cy - 140);
-    c.fillStyle = INK.parchmentDim;
-    c.font = `italic 17px ${FONT_DISPLAY}`;
-    c.fillText('Every telling compared, every difference found.', VIEW.width / 2, cy - 104);
-    game.results.forEach((result, i) => {
-      const y = cy - 48 + i * 44;
-      c.fillStyle = INK.parchment;
-      c.font = `19px ${FONT_DISPLAY}`;
-      c.textAlign = 'left';
-      c.fillText(result.title, VIEW.width / 2 - 250, y);
-      c.textAlign = 'center';
-      for (let s = 0; s < 3; s++) {
-        drawStar(c, VIEW.width / 2 + 158 + s * 34, y - 7, 12, s < result.stars);
-      }
-    });
-    c.fillStyle = INK.gold;
-    c.font = `26px ${FONT_DISPLAY}`;
-    c.fillText(`${game.totalStars()} of ${SCENES.length * 3} stars`, VIEW.width / 2, cy + 118);
-    c.fillStyle = INK.parchmentDim;
-    c.font = `15px ${FONT_BODY}`;
-    c.fillText('R — play again · Enter — play again', VIEW.width / 2, cy + 156);
-  });
-}
-
-// A five-pointed star, filled in gold or left as a dim outline.
-export function drawStar(ctx, cx, cy, r, filled) {
-  ctx.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const rad = i % 2 === 0 ? r : r * 0.45;
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    const x = cx + Math.cos(a) * rad;
-    const y = cy + Math.sin(a) * rad;
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+function drawCard(ctx, title, lines, screen, game) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(10, 12, 24, 0.62)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.fillStyle = '#232c44';
+  roundRect(ctx, CARD.x, CARD.y, CARD.w, CARD.h, 16);
+  ctx.fill();
+  ctx.strokeStyle = PALETTE.gold;
+  ctx.lineWidth = 2;
+  roundRect(ctx, CARD.x, CARD.y, CARD.w, CARD.h, 16);
+  ctx.stroke();
+  ctx.fillStyle = PALETTE.paper;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = '700 34px Georgia, serif';
+  ctx.fillText(title, CARD.x + CARD.w / 2, CARD.y + 58);
+  ctx.font = '400 16px sans-serif';
+  let y = CARD.y + 112;
+  for (const line of lines) {
+    ctx.fillText(line, CARD.x + CARD.w / 2, y);
+    y += 26;
   }
-  ctx.closePath();
-  if (filled) {
-    ctx.fillStyle = INK.gold;
+  for (const btn of cardButtons(screen)) {
+    ctx.fillStyle = PALETTE.gold;
+    roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 10);
     ctx.fill();
-  } else {
-    ctx.strokeStyle = INK.parchmentDim;
-    ctx.lineWidth = 1.6;
-    ctx.stroke();
+    ctx.fillStyle = '#1c2438';
+    ctx.font = '700 16px sans-serif';
+    ctx.fillText(btn.label, btn.x + btn.w / 2, btn.y + btn.h / 2 + 1);
   }
+  ctx.restore();
 }
 
-// Seconds as a clock face: 2:07, 0:43.
-export function formatTime(seconds) {
-  const whole = Math.max(0, Math.ceil(seconds));
-  const m = Math.floor(whole / 60);
-  const s = whole % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+function drawTitleCard(ctx, game) {
+  const lines = [
+    'Three painted scenes, two panels each — find every change',
+    'before the tide runs out.',
+    '',
+  ];
+  SCENES.forEach((scene, i) => {
+    lines.push(`${i + 1}. ${scene.name} — ${scene.differences.length} differences, ${formatTime(scene.seconds)}`);
+  });
+  drawCard(ctx, 'Twice-Told Tides', lines, SCREEN_TITLE, game);
+  // Star slots under the scene list.
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.font = '400 14px sans-serif';
+  ctx.fillStyle = PALETTE.paper;
+  ctx.fillText('Press Enter or click Begin to play', CARD.x + CARD.w / 2, CARD.y + CARD.h - 110);
+  ctx.restore();
+}
+
+export function draw(ctx, game, nowMs) {
+  // Backdrop.
+  const g = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  g.addColorStop(0, '#1c2438');
+  g.addColorStop(1, '#12172a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+
+  drawPanels(ctx, game, nowMs);
+  drawHud(ctx, game);
+  drawFooter(ctx, game);
+
+  if (game.screen === SCREEN_TITLE) {
+    drawTitleCard(ctx, game);
+  } else if (game.screen === SCREEN_PAUSED) {
+    drawCard(ctx, 'Paused', ['Take a breath — the tide is waiting.', 'P or Resume to carry on.'], SCREEN_PAUSED, game);
+  } else if (game.screen === SCREEN_SCENE_DONE) {
+    const scene = currentScene(game);
+    const stars = game.stars[game.sceneIndex];
+    drawCard(
+      ctx, 'Scene complete!',
+      [`You found all ${scene.differences.length} differences in ${scene.name}.`, `${formatTime(game.timeLeft)} to spare.`],
+      SCREEN_SCENE_DONE, game,
+    );
+    drawStars(ctx, CARD.x + CARD.w / 2 - 45, CARD.y + 200, stars, 30);
+  } else if (game.screen === SCREEN_GAME_DONE) {
+    const total = game.stars.reduce((a, b) => a + b, 0);
+    drawCard(
+      ctx, 'The tides are told!',
+      ['Every difference found, every scene complete.', `Total: ${total} of 9 stars.`],
+      SCREEN_GAME_DONE, game,
+    );
+    SCENES.forEach((scene, i) => {
+      drawStars(ctx, CARD.x + 90 + i * 170, CARD.y + 200, game.stars[i], 24);
+    });
+  } else if (game.screen === SCREEN_TIME_UP) {
+    const scene = currentScene(game);
+    drawCard(
+      ctx, 'Out of time!',
+      [`The tide came in with ${remainingCount(game)} of ${scene.differences.length} differences still hidden.`, 'Try the scene again — the panels never change.'],
+      SCREEN_TIME_UP, game,
+    );
+  }
 }

@@ -1,151 +1,106 @@
-// paintkit.js — the shared brushes every scene painter reaches for: skies,
-// moons, glows, water, gulls and the wooden frame the pictures hang in. Each
-// function takes the context first and works in whatever coordinate space the
-// caller has set up (panel-local, 0..600, for the scenes).
+// Shared brushes for the three scene painters: gradients, glows, the
+// moon, stars, lantern light and small helpers. Nothing here reads a
+// clock or a random stream of its own; callers pass their own rng.
 
-// A vertical gradient wash between colour stops, returned ready to fill with.
-export function skyGradient(ctx, x, y, w, h, stops) {
-  const grad = ctx.createLinearGradient(x, y, x, y + h);
-  for (const [at, colour] of stops) grad.addColorStop(at, colour);
-  return grad;
+/** Vertical sky gradient across the panel. */
+export function skyGradient(ctx, w, h, stops) {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  for (const [at, colour] of stops) g.addColorStop(at, colour);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
 }
 
-// A filled circle.
-export function disc(ctx, x, y, r, colour) {
-  ctx.fillStyle = colour;
+/** A soft radial glow centred at (x, y). */
+export function glow(ctx, x, y, radius, colour, alpha = 0.55) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  g.addColorStop(0, colour);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = g;
+  ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+  ctx.restore();
+}
+
+/** A field of tiny four-point stars in the upper part of the panel. */
+export function starField(ctx, rng, w, count, top, bottom) {
+  ctx.save();
+  ctx.fillStyle = '#fff8e0';
+  for (let i = 0; i < count; i += 1) {
+    const x = rng() * w;
+    const y = top + rng() * (bottom - top);
+    const r = 0.8 + rng() * 1.6;
+    ctx.globalAlpha = 0.35 + rng() * 0.6;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** A full moon disc with a soft halo. */
+export function moon(ctx, x, y, r) {
+  glow(ctx, x, y, r * 2.6, '#fdf6d8', 0.5);
+  ctx.save();
+  ctx.fillStyle = '#fdf3cf';
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
-}
-
-// A soft radial glow, the kind a lamp throws: bright at the heart, gone at r.
-export function glow(ctx, x, y, r, colour) {
-  const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-  grad.addColorStop(0, colour);
-  grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(x - r, y - r, r * 2, r * 2);
-}
-
-// A path for a rounded rectangle, left current so the caller can fill or stroke.
-export function roundedRectPath(ctx, x, y, w, h, r) {
+  ctx.fillStyle = 'rgba(214, 196, 150, 0.55)';
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
-  ctx.closePath();
-}
-
-// Pinprick stars scattered over a rectangle of sky.
-export function starField(ctx, rng, x, y, w, h, count, colour) {
-  ctx.fillStyle = colour;
-  for (let i = 0; i < count; i++) {
-    const sx = x + rng.next() * w;
-    const sy = y + rng.next() * h;
-    const r = rng.range(0.6, 1.7);
-    ctx.globalAlpha = rng.range(0.25, 0.95);
-    ctx.beginPath();
-    ctx.arc(sx, sy, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-// A four-point sparkle, like light catching glass.
-export function sparkle(ctx, x, y, r, colour) {
-  ctx.fillStyle = colour;
-  ctx.beginPath();
-  ctx.moveTo(x, y - r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.quadraticCurveTo(x, y, x, y + r);
-  ctx.quadraticCurveTo(x, y, x - r, y);
-  ctx.quadraticCurveTo(x, y, x, y - r);
+  ctx.arc(x - r * 0.3, y - r * 0.2, r * 0.22, 0, Math.PI * 2);
+  ctx.arc(x + r * 0.35, y + r * 0.3, r * 0.16, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 }
 
-// A scalloped band of water: a run of overlapping arcs along a baseline.
-export function waveBand(ctx, rng, x, y, w, colour, lift) {
+/** A simple gull: two curved wing strokes. */
+export function gull(ctx, x, y, size, colour = '#2a2438') {
+  ctx.save();
   ctx.strokeStyle = colour;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  const step = 26;
-  for (let px = x; px < x + w; px += step) {
-    const wobble = rng.range(-1.5, 1.5);
-    ctx.arc(px + step / 2, y + wobble, step / 2, Math.PI * 1.08, Math.PI * 1.92);
-  }
-  ctx.globalAlpha = 0.55;
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  void lift;
-}
-
-// A gull in flight: two shallow arcs meeting at the body. A scene can leave
-// one out entirely — that absence is a difference.
-export function gullShape(ctx, x, y, s, colour) {
-  ctx.strokeStyle = colour;
-  ctx.lineWidth = Math.max(2, s * 0.16);
+  ctx.lineWidth = 2.4;
   ctx.lineCap = 'round';
   ctx.beginPath();
-  ctx.moveTo(x - s, y);
-  ctx.quadraticCurveTo(x - s * 0.45, y - s * 0.62, x, y);
-  ctx.quadraticCurveTo(x + s * 0.45, y - s * 0.62, x + s, y);
+  ctx.moveTo(x - size, y);
+  ctx.quadraticCurveTo(x - size * 0.4, y - size * 0.7, x, y);
+  ctx.quadraticCurveTo(x + size * 0.4, y - size * 0.7, x + size, y);
   ctx.stroke();
+  ctx.restore();
 }
 
-// A crescent moon: a pale disc with the sky's colour laid over it, offset.
-export function crescentMoon(ctx, x, y, r, colour, skyColour) {
-  disc(ctx, x, y, r, colour);
-  disc(ctx, x + r * 0.42, y - r * 0.28, r * 0.86, skyColour);
-}
-
-// A cloud made of overlapping puffs, flat-bottomed.
-export function cloudPuff(ctx, x, y, s, colour) {
+/** A paper lantern: glowing rounded body with ribs and a tassel. */
+export function lantern(ctx, x, y, r, colour) {
+  ctx.save();
+  glow(ctx, x, y, r * 2.2, colour, 0.45);
   ctx.fillStyle = colour;
-  const puffs = [
-    [0, 0, 1],
-    [-0.8, 0.18, 0.72],
-    [0.8, 0.18, 0.78],
-    [-0.35, -0.3, 0.66],
-    [0.42, -0.26, 0.6],
-  ];
-  for (const [dx, dy, dr] of puffs) {
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 1.15, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(90, 40, 20, 0.5)';
+  ctx.lineWidth = 1.5;
+  for (let i = -2; i <= 2; i += 1) {
     ctx.beginPath();
-    ctx.arc(x + dx * s, y + dy * s, dr * s * 0.55, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.ellipse(x, y, Math.abs(i) * r * 0.32, r * 1.15, 0, -Math.PI / 2, Math.PI / 2);
+    ctx.stroke();
   }
-  ctx.fillRect(x - s * 1.15, y - s * 0.05, s * 2.3, s * 0.42);
-}
-
-// The wooden frame a picture hangs in: dark outer wood, a lighter inner lip
-// and a thin gold line where frame meets paint.
-export function panelFrame(ctx, x, y, w, h, ink) {
-  ctx.fillStyle = ink.frameDark;
-  roundedRectPath(ctx, x - 10, y - 10, w + 20, h + 20, 14);
-  ctx.fill();
-  ctx.fillStyle = ink.frameLight;
-  roundedRectPath(ctx, x - 5, y - 5, w + 10, h + 10, 10);
-  ctx.fill();
-  ctx.strokeStyle = ink.gold;
+  ctx.fillStyle = '#7a4a1e';
+  ctx.fillRect(x - 4, y - r * 1.15 - 5, 8, 6);
+  ctx.strokeStyle = '#c0392b';
   ctx.lineWidth = 2;
-  roundedRectPath(ctx, x - 1.5, y - 1.5, w + 3, h + 3, 6);
+  ctx.beginPath();
+  ctx.moveTo(x, y + r * 1.15);
+  ctx.lineTo(x, y + r * 1.15 + 12);
   ctx.stroke();
+  ctx.restore();
 }
 
-// A vignette over a rectangle: transparent in the middle, dark at the edges,
-// for the parlour-wall mood behind the cards.
-export function vignette(ctx, x, y, w, h, strength) {
-  const grad = ctx.createRadialGradient(
-    x + w / 2, y + h / 2, Math.min(w, h) * 0.36,
-    x + w / 2, y + h / 2, Math.max(w, h) * 0.74,
-  );
-  grad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  grad.addColorStop(1, `rgba(0, 0, 0, ${strength})`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(x, y, w, h);
+/** Rounded-rectangle path helper. */
+export function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }

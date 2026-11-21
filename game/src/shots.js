@@ -1,61 +1,49 @@
-// shots.js — the screenshot staging. With a ?shot= name in the address, the
-// game arranges itself into a posed, frozen moment of real play — a hunt in
-// mid-course, some differences ringed, some still hidden, the counter and
-// the clock where play would put them — and holds it still for the camera.
-// Nothing here is drawn that play itself could not produce: the staging only
-// sets the engine's own state, and the ordinary renderer draws the frame.
+// The screenshot scenes behind ?shot=cover|night-market|glasshouse|
+// complete. Each one sets the real game state to a frozen mid-hunt
+// moment — found rings, a hint ring, the complete card — and the boot
+// code renders it once with a fixed clock, so the frame is what a real
+// game looks like and the same run always gives the same frame.
+import { SCENES } from './scenes.js';
+import { SCREEN_GAME_DONE, SCREEN_PLAY, startScene } from './engine.js';
 
-import { sceneAt } from './scenes.js';
-
-// Pose the game for the named shot. Returns true when a shot was staged.
-export function stageShot(game, search) {
-  const shot = new URLSearchParams(search).get('shot');
-  if (!shot) return false;
-  game.frozen = true;
-  if (shot === 'cover') {
-    // The harbour, mid-hunt: the lamp and the stripe found, three to go,
-    // and the spark of the last find still in the air.
-    game.beginScene(0);
-    const scene = sceneAt(0);
-    game.found = new Set(['lamp', 'stripe']);
-    game.timeLeft = 117;
-    const stripe = scene.differences.find((d) => d.id === 'stripe');
-    game.effects = [{ kind: 'spark', x: stripe.x, y: stripe.y, panel: 'both', age: 0.3, life: 0.65 }];
-    game.announce('Found: the boat stripe, painted teal. 3 to go.');
-  } else if (shot === 'market') {
-    // The night market, mid-hunt: the bulb and the jar found, four to go.
-    game.beginScene(1);
-    game.found = new Set(['bulb', 'jar']);
-    game.timeLeft = 131;
-    game.hintsLeft = 2;
-    game.announce('Found: a jar, gone from the shelf. 4 to go.');
-  } else if (shot === 'glass') {
-    // The glasshouse, mid-hunt: three found, and a hint ring circling the
-    // butterfly while four still hide.
-    game.beginScene(2);
-    game.found = new Set(['pane', 'cactus', 'can']);
-    game.timeLeft = 148;
-    game.hintsLeft = 2;
-    game.hintId = 'butterfly';
-    game.hintTimeLeft = 5;
-    game.announce('A hint glimmers somewhere in the picture. 4 to go.');
-  } else if (shot === 'end') {
-    // The parlour complete: the last scene fully found behind the card that
-    // shows every scene's stars.
-    game.beginScene(2);
-    const scene = sceneAt(2);
-    game.found = new Set(scene.differences.map((d) => d.id));
-    game.timeLeft = 52;
-    game.results = [
-      { sceneId: 'harbour', title: 'Dusk at Lanternwick Harbour', stars: 3, timeLeft: 41, misses: 1, hintsUsed: 0 },
-      { sceneId: 'market', title: 'The Night Market', stars: 2, timeLeft: 18, misses: 3, hintsUsed: 1 },
-      { sceneId: 'glasshouse', title: 'The Glasshouse', stars: 3, timeLeft: 52, misses: 0, hintsUsed: 0 },
-    ];
-    game.screen = 'gameDone';
-    game.announce('The parlour is complete: 8 of 9 stars. Press R to play again.');
-  } else {
-    game.frozen = false;
-    return false;
+function markFound(game, ids, nowMs, ageMs = 320) {
+  const scene = SCENES[game.sceneIndex];
+  for (const id of ids) {
+    if (scene.differences.some((d) => d.id === id)) {
+      game.found.add(id);
+      game.foundAt.set(id, nowMs - ageMs);
+    }
   }
-  return true;
+}
+
+/**
+ * Put `game` into the named shot scene and return the fixed clock
+ * (ms) the frame should be rendered with.
+ */
+export function stageShot(name, game) {
+  const nowMs = 100000;
+  if (name === 'night-market') {
+    startScene(game, 1);
+    game.timeLeft = 150;
+    markFound(game, ['bulb', 'fruit'], nowMs);
+  } else if (name === 'glasshouse') {
+    startScene(game, 2);
+    game.timeLeft = 182;
+    markFound(game, ['flower'], nowMs);
+    game.hintTarget = 'butterfly';
+    game.hintUntil = nowMs + 3000;
+  } else if (name === 'complete') {
+    startScene(game, 2);
+    game.timeLeft = 42;
+    game.stars = [3, 2, 3];
+    markFound(game, SCENES[2].differences.map((d) => d.id), nowMs, 2000);
+    game.screen = SCREEN_GAME_DONE;
+  } else {
+    // cover: the harbour mid-hunt, one difference found, spark visible.
+    startScene(game, 0);
+    game.timeLeft = 118;
+    markFound(game, ['sail'], nowMs);
+  }
+  game.screen = game.screen === SCREEN_GAME_DONE ? SCREEN_GAME_DONE : SCREEN_PLAY;
+  return nowMs;
 }

@@ -1,425 +1,376 @@
-// scene-glasshouse.js — scene three: "The Glasshouse".
-// Morning light through an arched glass roof, benches of pots, things growing
-// everywhere. The painter draws the scene once; the `altered` set names which
-// of its seven differences take their changed form on the second telling: a
-// roof pane cracked, a hanging planter gone, a butterfly's wings another
-// colour, a cactus become a shrub, a snail gone, a watering can gone, and a
-// flower turned gold.
+// Scene 3 — The Glasshouse (7 differences, 210s).
+// A glasshouse interior: pitched glass roof, hanging planter, butterfly,
+// cactus, tall flower, snail on the path, watering can. The planter and
+// the snail texture themselves from their own seeded streams, so their
+// absence never shifts the rest of the scene.
+import { glow, skyGradient } from './paintkit.js';
+import { streamFor } from './random.js';
 
-import { skyGradient, disc, glow, sparkle } from './paintkit.js';
-import { makeRng } from './random.js';
-
-export const glasshouseScene = {
+export const GLASSHOUSE = {
   id: 'glasshouse',
-  title: 'The Glasshouse',
-  subtitle: 'Scene three · seven differences',
-  timeLimit: 210,
+  name: 'The Glasshouse',
+  seconds: 210,
   differences: [
-    { id: 'pane', label: 'a roof pane, cracked', x: 180, y: 105, r: 30 },
-    { id: 'planter', label: 'a hanging planter, gone', x: 450, y: 184, r: 28 },
-    { id: 'butterfly', label: 'the butterfly, wings turned violet', x: 350, y: 300, r: 22 },
-    { id: 'cactus', label: 'the cactus, become a shrub', x: 140, y: 352, r: 34 },
-    { id: 'flower', label: 'the tall flower, turned gold', x: 430, y: 420, r: 20 },
-    { id: 'snail', label: 'the snail, wandered off', x: 490, y: 502, r: 18 },
-    { id: 'can', label: 'the watering can, taken away', x: 250, y: 512, r: 26 },
+    { id: 'crack', x: 200, y: 62, r: 30, label: 'the cracked roof pane' },
+    { id: 'planter', x: 140, y: 135, r: 32, label: 'the hanging planter' },
+    { id: 'butterfly', x: 350, y: 200, r: 26, label: "the butterfly's wings" },
+    { id: 'cactus', x: 120, y: 415, r: 32, label: 'the cactus' },
+    { id: 'flower', x: 450, y: 290, r: 28, label: 'the tall flower' },
+    { id: 'snail', x: 300, y: 505, r: 18, label: 'the snail' },
+    { id: 'can', x: 500, y: 470, r: 26, label: 'the watering can' },
   ],
-  paint,
 };
 
-function paint(ctx, rng, altered) {
-  // Morning outside the glass: pale gold high, leaf-green low.
-  ctx.fillStyle = skyGradient(ctx, 0, 0, 600, 600, [
-    [0, '#f4dc9e'],
-    [0.34, '#cfdca6'],
-    [0.62, '#7d9b6e'],
-    [1, '#4c6b4a'],
+function paintGlass(ctx) {
+  skyGradient(ctx, 560, 560, [
+    [0, '#cfe8d8'],
+    [0.5, '#dcefd9'],
+    [1, '#b8d9b0'],
   ]);
-  ctx.fillRect(0, 0, 600, 600);
-
-  // Shafts of light falling through the roof.
-  ctx.fillStyle = 'rgba(255, 244, 200, 0.16)';
-  for (const [x0, x1] of [[90, 210], [300, 430], [470, 560]]) {
-    ctx.beginPath();
-    ctx.moveTo(x0, 30);
-    ctx.lineTo(x1, 30);
-    ctx.lineTo(x1 + 90, 600);
-    ctx.lineTo(x0 + 40, 600);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  paintRoofGlass(ctx, altered);
-  paintHangingPlanter(ctx, 150, 0.8);
-  if (!altered.has('planter')) paintHangingPlanter(ctx, 450, 1);
-  paintBackdropPlants(ctx, rng);
-  paintBenches(ctx, altered, rng);
-  paintButterfly(ctx, altered);
-  paintFloor(ctx, rng);
-  paintTallFlower(ctx, altered);
-  paintBigPot(ctx, altered);
-  if (!altered.has('can')) paintWateringCan(ctx);
-  sparkle(ctx, 540, 120, 6, 'rgba(255, 250, 220, 0.7)');
-  sparkle(ctx, 80, 300, 5, 'rgba(255, 250, 220, 0.5)');
-}
-
-// The arched glass roof: translucent panes between dark ribs. One pane, up
-// on the left, is a difference — whole on the first telling, cracked on the
-// second.
-function paintRoofGlass(ctx, altered) {
-  // Glass wash over the upper part of the scene.
-  ctx.fillStyle = 'rgba(230, 244, 235, 0.20)';
+  glow(ctx, 470, 60, 120, '#fff6c8', 0.55);
+  // Pitched roof: two slopes meeting at the ridge.
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.28)';
   ctx.beginPath();
-  ctx.moveTo(24, 246);
-  ctx.lineTo(24, 150);
-  ctx.quadraticCurveTo(300, -30, 576, 150);
-  ctx.lineTo(576, 246);
+  ctx.moveTo(0, 130);
+  ctx.lineTo(280, 18);
+  ctx.lineTo(280, 130);
   ctx.closePath();
   ctx.fill();
-  // Ribs: five arches springing from the eaves line.
-  ctx.strokeStyle = '#3c4a38';
+  ctx.beginPath();
+  ctx.moveTo(560, 130);
+  ctx.lineTo(280, 18);
+  ctx.lineTo(280, 130);
+  ctx.closePath();
+  ctx.fill();
+  // Roof frame.
+  ctx.strokeStyle = '#4a5a44';
   ctx.lineWidth = 6;
-  for (const bx of [24, 162, 300, 438, 576]) {
-    ctx.beginPath();
-    ctx.moveTo(bx, 246);
-    ctx.quadraticCurveTo(bx + (300 - bx) * 0.24, 40, 300 + (bx - 300) * 0.55, 26 + Math.abs(bx - 300) * 0.16);
-    ctx.stroke();
-  }
-  // Two purlin arcs across the ribs.
-  ctx.lineWidth = 4;
-  for (const lift of [86, 158]) {
-    ctx.beginPath();
-    ctx.moveTo(24, 246 - lift * 0.55);
-    ctx.quadraticCurveTo(300, 246 - lift - 66, 576, 246 - lift * 0.55);
-    ctx.stroke();
-  }
-  ctx.lineWidth = 7;
   ctx.beginPath();
-  ctx.moveTo(16, 246);
-  ctx.lineTo(584, 246);
+  ctx.moveTo(0, 130);
+  ctx.lineTo(280, 18);
+  ctx.lineTo(560, 130);
   ctx.stroke();
-
-  // The marked pane: outlined on its own so its crack has somewhere to live.
-  ctx.fillStyle = 'rgba(240, 250, 255, 0.13)';
-  ctx.fillRect(132, 58, 96, 92);
-  ctx.strokeStyle = '#3c4a38';
-  ctx.lineWidth = 3.5;
-  ctx.strokeRect(132, 58, 96, 92);
-  if (altered.has('pane')) {
-    // A star of cracks from one hard knock at the pane's heart.
-    ctx.strokeStyle = 'rgba(250, 252, 255, 0.85)';
-    ctx.lineWidth = 1.8;
-    const cx = 180;
-    const cy = 105;
-    for (const [dx, dy] of [[-38, -30], [-8, -42], [30, -34], [44, 4], [22, 38], [-24, 34], [-44, -2]]) {
-      ctx.beginPath();
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + dx * 0.45, cy + dy * 0.45);
-      ctx.lineTo(cx + dx, cy + dy);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.arc(cx, cy, 12, 0, Math.PI * 2);
-    ctx.stroke();
-    disc(ctx, cx, cy, 3, 'rgba(250, 252, 255, 0.9)');
-  }
-}
-
-// A hanging planter: chains, a bowl, and leaves spilling over the rim. The
-// one on the right is a difference: on the second telling it is simply gone.
-// It textures itself from its own little seed, so whether it is present or
-// absent never shifts the shared random stream the rest of the scene — and
-// so both panels — are painted from.
-function paintHangingPlanter(ctx, x, scale) {
-  const rng = makeRng(Math.round(x * 13 + scale * 1000));
-  const bowlY = 168 * scale + 30;
-  ctx.strokeStyle = '#2e3a2c';
+  ctx.beginPath();
+  ctx.moveTo(280, 18);
+  ctx.lineTo(280, 130);
+  ctx.stroke();
+  // Roof pane seams.
   ctx.lineWidth = 2.5;
-  for (const dx of [-26, 0, 26]) {
+  ctx.strokeStyle = 'rgba(74, 90, 68, 0.7)';
+  for (const x of [95, 190]) {
     ctx.beginPath();
-    ctx.moveTo(x + dx * scale, bowlY);
-    ctx.lineTo(x, 26);
+    ctx.moveTo(x, 130 - (x / 280) * 112);
+    ctx.lineTo(x, 18 + ((280 - x) / 280) * 112);
     ctx.stroke();
   }
-  // Leaves first, spilling over where the bowl will be.
-  ctx.fillStyle = '#4a7a3f';
-  for (let i = 0; i < 7; i++) {
-    const dx = rng.range(-34, 34) * scale;
-    const len = rng.range(16, 40) * scale;
+  for (const x of [370, 465]) {
     ctx.beginPath();
-    ctx.ellipse(x + dx, bowlY + len * 0.4, 6 * scale, len * 0.55, dx * 0.012, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = '#6e4f2c';
-  ctx.beginPath();
-  ctx.ellipse(x, bowlY, 40 * scale, 15 * scale, 0, 0, Math.PI);
-  ctx.fill();
-  ctx.fillStyle = '#59391d';
-  ctx.fillRect(x - 40 * scale, bowlY - 3, 80 * scale, 5);
-  // A tuft on top.
-  ctx.fillStyle = '#5d8a46';
-  for (const dx of [-16, 0, 16]) {
-    ctx.beginPath();
-    ctx.ellipse(x + dx * scale, bowlY - 10 * scale, 7 * scale, 12 * scale, dx * 0.02, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
-
-// Broad background leaves behind the benches, for depth.
-function paintBackdropPlants(ctx, rng) {
-  ctx.fillStyle = 'rgba(38, 66, 40, 0.55)';
-  for (let i = 0; i < 9; i++) {
-    const x = 30 + i * 68 + rng.range(-10, 10);
-    const h = rng.range(90, 170);
-    ctx.beginPath();
-    ctx.ellipse(x, 420 - h / 2, 17, h / 2, rng.range(-0.24, 0.24), 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.fillStyle = 'rgba(24, 44, 28, 0.6)';
-  ctx.fillRect(0, 396, 600, 10);
-}
-
-// Two benches of pots. On the left bench stands the scene's plant that
-// changes its nature: a cactus on the first telling, a round shrub on the
-// second.
-function paintBenches(ctx, altered, rng) {
-  for (const bx of [40, 320]) {
-    ctx.fillStyle = '#5d4128';
-    ctx.fillRect(bx, 400, 240, 12);
-    ctx.fillRect(bx + 14, 412, 10, 66);
-    ctx.fillRect(bx + 216, 412, 10, 66);
-    ctx.fillStyle = '#4a3423';
-    ctx.fillRect(bx, 408, 240, 4);
-  }
-  // Left bench: the changing plant, a fern, and seed trays.
-  paintChangingPlant(ctx, altered);
-  paintFernPot(ctx, 226, 400);
-  ctx.fillStyle = '#77552f';
-  ctx.fillRect(52, 384, 52, 16);
-  ctx.fillStyle = '#5d8a46';
-  for (let i = 0; i < 4; i++) disc(ctx, 62 + i * 12, 382, 4, '#5d8a46');
-  // Right bench: three honest pots that never change.
-  paintLeafyPot(ctx, 372, 400, '#8a4a6e');
-  paintLeafyPot(ctx, 452, 400, '#b4503f');
-  paintFernPot(ctx, 528, 400);
-  void rng;
-}
-
-// A terracotta pot, shared by the bench plants.
-function paintPot(ctx, x, baseY, w) {
-  ctx.fillStyle = '#b4653f';
-  ctx.beginPath();
-  ctx.moveTo(x - w / 2, baseY - 30);
-  ctx.lineTo(x + w / 2, baseY - 30);
-  ctx.lineTo(x + w / 2 - 6, baseY);
-  ctx.lineTo(x - w / 2 + 6, baseY);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#c97a4e';
-  ctx.fillRect(x - w / 2 - 3, baseY - 36, w + 6, 8);
-}
-
-// The changing plant on the left bench: cactus, or shrub.
-function paintChangingPlant(ctx, altered) {
-  paintPot(ctx, 140, 400, 52);
-  if (altered.has('cactus')) {
-    // A round, clipped shrub in a ball of leaves.
-    ctx.fillStyle = '#3f7031';
-    disc(ctx, 140, 336, 27, '#3f7031');
-    disc(ctx, 118, 352, 19, '#4a7d38');
-    disc(ctx, 162, 352, 19, '#4a7d38');
-    disc(ctx, 140, 356, 21, '#548c40');
-    ctx.fillStyle = '#c03a30';
-    for (const [dx, dy] of [[-12, -14], [10, -8], [0, 6], [16, 10], [-18, 4]]) {
-      disc(ctx, 140 + dx, 340 + dy, 3, '#c03a30');
-    }
-  } else {
-    // A cactus: a ribbed column with two arms and a flower on top.
-    ctx.fillStyle = '#3f7a44';
-    ctx.beginPath();
-    ctx.ellipse(140, 334, 14, 34, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(118, 344, 8, 16, 0, 0, Math.PI * 2);
-    ctx.ellipse(162, 330, 8, 20, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(118, 344, 16, 7);
-    ctx.fillRect(148, 330, 14, 7);
-    ctx.strokeStyle = 'rgba(230, 255, 230, 0.5)';
-    ctx.lineWidth = 1.4;
-    for (const dx of [-7, 0, 7]) {
-      ctx.beginPath();
-      ctx.moveTo(140 + dx, 308);
-      ctx.lineTo(140 + dx, 360);
-      ctx.stroke();
-    }
-    disc(ctx, 140, 298, 6, '#e86a92');
-    disc(ctx, 140, 298, 2.6, '#ffd97a');
-  }
-}
-
-// A fern in a pot: arcs of fronds.
-function paintFernPot(ctx, x, baseY) {
-  paintPot(ctx, x, baseY, 40);
-  ctx.strokeStyle = '#4a7a3f';
-  ctx.lineWidth = 3;
-  for (const [dx, lift] of [[-26, 26], [-13, 38], [0, 44], [13, 38], [26, 26]]) {
-    ctx.beginPath();
-    ctx.moveTo(x, baseY - 32);
-    ctx.quadraticCurveTo(x + dx * 0.5, baseY - 32 - lift, x + dx, baseY - 22 - lift * 0.55);
+    ctx.moveTo(x, 18 + ((x - 280) / 280) * 112);
+    ctx.lineTo(x, 130 - ((560 - x) / 280) * 112);
     ctx.stroke();
   }
-}
-
-// A leafy pot with a coloured bloom or two.
-function paintLeafyPot(ctx, x, baseY, bloom) {
-  paintPot(ctx, x, baseY, 44);
-  ctx.fillStyle = '#4a7a3f';
-  for (const [dx, dy, r] of [[-13, -44, 12], [0, -54, 14], [13, -44, 12], [0, -38, 12]]) {
-    disc(ctx, x + dx, baseY + dy, r, '#4a7a3f');
+  // Wall mullions.
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#4a5a44';
+  for (let x = 80; x < 560; x += 80) {
+    ctx.beginPath();
+    ctx.moveTo(x, 130);
+    ctx.lineTo(x, 460);
+    ctx.stroke();
   }
-  disc(ctx, x - 6, baseY - 52, 5.5, bloom);
-  disc(ctx, x + 9, baseY - 42, 5.5, bloom);
-}
-
-// The butterfly, drifting over the benches: amber wings on the first
-// telling, violet on the second.
-function paintButterfly(ctx, altered) {
-  const wing = altered.has('butterfly') ? '#8a6ae8' : '#e8973a';
-  const wingDark = altered.has('butterfly') ? '#6a4ac0' : '#c56a1d';
-  ctx.fillStyle = wing;
   ctx.beginPath();
-  ctx.ellipse(336, 290, 13, 8, -0.6, 0, Math.PI * 2);
-  ctx.ellipse(364, 290, 13, 8, 0.6, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = wingDark;
-  ctx.beginPath();
-  ctx.ellipse(338, 308, 10, 6.5, 0.5, 0, Math.PI * 2);
-  ctx.ellipse(362, 308, 10, 6.5, -0.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = '#2c2318';
-  ctx.beginPath();
-  ctx.ellipse(350, 300, 3.4, 10, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = '#2c2318';
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(348, 291);
-  ctx.quadraticCurveTo(342, 282, 337, 280);
-  ctx.moveTo(352, 291);
-  ctx.quadraticCurveTo(358, 282, 363, 280);
+  ctx.moveTo(0, 300);
+  ctx.lineTo(560, 300);
   ctx.stroke();
+  ctx.restore();
 }
 
-// The tiled floor.
-function paintFloor(ctx, rng) {
-  ctx.fillStyle = '#8a6f52';
-  ctx.fillRect(0, 540, 600, 60);
-  ctx.strokeStyle = 'rgba(60, 40, 24, 0.4)';
+function paintCrack(ctx, altered) {
+  if (!altered.has('crack')) return;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
   ctx.lineWidth = 2;
-  for (let x = 0; x <= 600; x += 75) {
+  ctx.lineCap = 'round';
+  const cx = 200;
+  const cy = 62;
+  const arms = [
+    [[0, 0], [-16, -12], [-26, -10]],
+    [[0, 0], [14, -14], [24, -22]],
+    [[0, 0], [18, 8], [30, 6]],
+    [[0, 0], [-6, 16], [-14, 26]],
+    [[0, 0], [4, 18], [2, 30]],
+  ];
+  for (const arm of arms) {
     ctx.beginPath();
-    ctx.moveTo(x, 540);
-    ctx.lineTo(x - 18, 600);
+    ctx.moveTo(cx + arm[0][0], cy + arm[0][1]);
+    for (let i = 1; i < arm.length; i += 1) ctx.lineTo(cx + arm[i][0], cy + arm[i][1]);
     ctx.stroke();
   }
+  ctx.restore();
+}
+
+function paintPlanter(ctx, altered) {
+  if (altered.has('planter')) return;
+  const rng = streamFor('glasshouse', 'planter');
+  ctx.save();
+  // Hanging strings from the roof beam.
+  ctx.strokeStyle = '#4a5a44';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(0, 570);
-  ctx.lineTo(600, 570);
+  ctx.moveTo(118, 84);
+  ctx.lineTo(132, 118);
+  ctx.moveTo(162, 84);
+  ctx.lineTo(148, 118);
   ctx.stroke();
-  ctx.fillStyle = 'rgba(255, 240, 200, 0.10)';
-  for (let i = 0; i < 10; i++) {
-    ctx.fillRect(rng.range(0, 580), rng.range(544, 592), rng.range(14, 40), 3);
-  }
-}
-
-// A tall flower in a floor pot: crimson on the first telling, gold on the
-// second.
-function paintTallFlower(ctx, altered) {
-  paintPot(ctx, 430, 516, 46);
-  ctx.strokeStyle = '#3f7031';
-  ctx.lineWidth = 4;
+  // Pot.
+  ctx.fillStyle = '#a06838';
   ctx.beginPath();
-  ctx.moveTo(430, 490);
-  ctx.quadraticCurveTo(424, 460, 430, 428);
-  ctx.stroke();
-  ctx.fillStyle = '#4a7d38';
-  ctx.beginPath();
-  ctx.ellipse(418, 466, 12, 5, -0.6, 0, Math.PI * 2);
-  ctx.ellipse(443, 452, 12, 5, 0.6, 0, Math.PI * 2);
-  ctx.fill();
-  const petal = altered.has('flower') ? '#e8b34a' : '#c03a30';
-  ctx.fillStyle = petal;
-  for (let i = 0; i < 7; i++) {
-    const a = (i / 7) * Math.PI * 2;
-    disc(ctx, 430 + Math.cos(a) * 10, 420 + Math.sin(a) * 10, 6.4, petal);
-  }
-  disc(ctx, 430, 420, 5.6, '#7a4a1d');
-}
-
-// The great floor pot on the right, broad leaves on stems — and a snail
-// that rests on its rim on the first telling only.
-function paintBigPot(ctx, altered) {
-  // Stems rising from the pot's mouth to the leaves.
-  ctx.strokeStyle = '#3f7031';
-  ctx.lineWidth = 4;
-  for (const dx of [-26, 0, 26]) {
-    ctx.beginPath();
-    ctx.moveTo(505, 516);
-    ctx.quadraticCurveTo(505 + dx * 0.4, 492, 505 + dx, 470);
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#4a7d38';
-  for (const [dx, dy, r, tilt] of [[-30, -44, 15, -0.5], [0, -58, 17, 0], [30, -44, 15, 0.5], [-14, -30, 13, -0.2], [16, -30, 13, 0.2]]) {
-    ctx.beginPath();
-    ctx.ellipse(505 + dx, 512 + dy, r * 0.62, r, tilt, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  paintPot(ctx, 505, 548, 74);
-  if (!altered.has('snail')) {
-    // The snail: a coiled shell and a slow body along the pot's rim.
-    ctx.fillStyle = '#c9a86a';
-    ctx.beginPath();
-    ctx.ellipse(492, 508, 13, 5.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#a8763a';
-    disc(ctx, 486, 500, 9, '#a8763a');
-    ctx.strokeStyle = '#7a4a1d';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.arc(486, 500, 5.4, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = '#c9a86a';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(502, 503);
-    ctx.lineTo(506, 495);
-    ctx.moveTo(499, 502);
-    ctx.lineTo(500, 493);
-    ctx.stroke();
-  }
-}
-
-// A green watering can on the floorboards, spout and rose and all. On the
-// second telling someone has taken it away.
-function paintWateringCan(ctx) {
-  glow(ctx, 250, 520, 40, 'rgba(255, 240, 190, 0.10)');
-  ctx.fillStyle = '#3f7a5e';
-  ctx.beginPath();
-  ctx.ellipse(250, 518, 27, 19, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(238, 488, 24, 14);
-  ctx.fillStyle = '#356b50';
-  ctx.beginPath();
-  ctx.moveTo(228, 510);
-  ctx.lineTo(198, 492);
-  ctx.lineTo(204, 484);
-  ctx.lineTo(234, 500);
+  ctx.moveTo(120, 118);
+  ctx.lineTo(160, 118);
+  ctx.lineTo(154, 146);
+  ctx.lineTo(126, 146);
   ctx.closePath();
   ctx.fill();
-  disc(ctx, 200, 488, 7, '#2c5a44');
-  ctx.strokeStyle = '#356b50';
+  // Trailing vines and leaves, from the planter's own stream.
+  ctx.strokeStyle = '#3e7a3a';
+  ctx.lineWidth = 2.5;
+  for (let v = 0; v < 3; v += 1) {
+    const bx = 128 + v * 12;
+    const sway = (rng() - 0.5) * 22;
+    ctx.beginPath();
+    ctx.moveTo(bx, 146);
+    ctx.quadraticCurveTo(bx + sway, 168, bx + sway * 1.4, 186 + rng() * 12);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#4d8a44';
+  for (let i = 0; i < 7; i += 1) {
+    const lx = 122 + rng() * 36;
+    const ly = 148 + rng() * 46;
+    ctx.beginPath();
+    ctx.ellipse(lx, ly, 6 + rng() * 4, 4 + rng() * 3, rng() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function paintButterfly(ctx, altered) {
+  const wing = altered.has('butterfly') ? '#8a5fd0' : '#e07b1f';
+  ctx.save();
+  ctx.translate(350, 200);
+  ctx.rotate(-0.25);
+  ctx.fillStyle = wing;
+  // Upper and lower wings, mirrored.
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(s * 14, -8, 13, 10, s * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(s * 11, 8, 9, 7, s * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Wing spots.
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(s * 14, -8, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Body and antennae.
+  ctx.strokeStyle = '#2a2438';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-3, -12);
+  ctx.quadraticCurveTo(-8, -20, -12, -22);
+  ctx.moveTo(3, -12);
+  ctx.quadraticCurveTo(8, -20, 12, -22);
+  ctx.stroke();
+  ctx.fillStyle = '#2a2438';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 3, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintTallFlower(ctx, altered) {
+  ctx.save();
+  // Stem and leaves.
+  ctx.strokeStyle = '#3e7a3a';
   ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.arc(268, 508, 17, -1.1, 1.1);
+  ctx.moveTo(450, 460);
+  ctx.quadraticCurveTo(446, 380, 450, 306);
   ctx.stroke();
+  ctx.fillStyle = '#4d8a44';
+  ctx.beginPath();
+  ctx.ellipse(428, 400, 18, 7, -0.5, 0, Math.PI * 2);
+  ctx.ellipse(472, 430, 18, 7, 0.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Bloom: pink, or gold when altered.
+  const petal = altered.has('flower') ? '#e8b64c' : '#d96a8a';
+  ctx.fillStyle = petal;
+  for (let i = 0; i < 6; i += 1) {
+    const a = (i / 6) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.ellipse(450 + Math.cos(a) * 16, 290 + Math.sin(a) * 16, 12, 8, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = '#e8b64c';
+  ctx.beginPath();
+  ctx.arc(450, 290, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintCactusOrShrub(ctx, altered) {
+  ctx.save();
+  // Terracotta pot.
+  ctx.fillStyle = '#a06838';
+  ctx.beginPath();
+  ctx.moveTo(96, 440);
+  ctx.lineTo(144, 440);
+  ctx.lineTo(138, 470);
+  ctx.lineTo(102, 470);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#8a5a30';
+  ctx.fillRect(92, 434, 56, 9);
+  if (!altered.has('cactus')) {
+    // Cactus: column with two arms.
+    ctx.fillStyle = '#4d8a44';
+    ctx.beginPath();
+    ctx.ellipse(120, 408, 11, 32, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(102, 416, 7, 16, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(138, 412, 7, 18, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3e7a3a';
+    ctx.fillRect(104, 400, 3, 8);
+    ctx.fillRect(134, 396, 3, 8);
+  } else {
+    // Shrub: a rounded bush in the same pot.
+    ctx.fillStyle = '#5a9a4a';
+    for (const [sx, sy, sr] of [[104, 420, 14], [120, 406, 17], [136, 420, 14], [112, 432, 12], [128, 432, 12]]) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    ctx.arc(114, 400, 5, 0, Math.PI * 2);
+    ctx.arc(128, 414, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function paintBedAndPath(ctx) {
+  ctx.save();
+  // Soil bed along the bottom.
+  ctx.fillStyle = '#5a4028';
+  ctx.fillRect(0, 460, 560, 100);
+  ctx.fillStyle = '#6b4e30';
+  ctx.fillRect(0, 460, 560, 8);
+  // Stone path down the middle.
+  ctx.fillStyle = '#9a8a72';
+  ctx.fillRect(240, 460, 120, 100);
+  const rng = streamFor('glasshouse', 'path-stones');
+  ctx.strokeStyle = 'rgba(60, 45, 30, 0.5)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i += 1) {
+    const y = 470 + i * 18 + rng() * 6;
+    ctx.beginPath();
+    ctx.moveTo(240, y);
+    ctx.lineTo(360, y);
+    ctx.stroke();
+  }
+  // Side ferns.
+  ctx.strokeStyle = '#3e7a3a';
+  ctx.lineWidth = 3;
+  for (const bx of [40, 200, 380, 530]) {
+    for (let f = -2; f <= 2; f += 1) {
+      ctx.beginPath();
+      ctx.moveTo(bx, 470);
+      ctx.quadraticCurveTo(bx + f * 12, 440, bx + f * 20, 424 + Math.abs(f) * 6);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function paintSnail(ctx, altered) {
+  if (altered.has('snail')) return;
+  ctx.save();
+  // Body and shell on the path.
+  ctx.fillStyle = '#c98a5a';
+  ctx.beginPath();
+  ctx.ellipse(300, 510, 20, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#8a5a30';
+  ctx.beginPath();
+  ctx.arc(296, 500, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#5a4028';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(296, 500, 6, 0, Math.PI * 1.5);
+  ctx.stroke();
+  // Eye stalks.
+  ctx.strokeStyle = '#c98a5a';
+  ctx.beginPath();
+  ctx.moveTo(316, 504);
+  ctx.lineTo(320, 494);
+  ctx.moveTo(312, 505);
+  ctx.lineTo(314, 495);
+  ctx.stroke();
+  ctx.fillStyle = '#2a2438';
+  ctx.beginPath();
+  ctx.arc(320, 493, 2, 0, Math.PI * 2);
+  ctx.arc(314, 494, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function paintWateringCan(ctx, altered) {
+  if (altered.has('can')) return;
+  ctx.save();
+  ctx.translate(500, 470);
+  // Body, spout, handle.
+  ctx.fillStyle = '#7a8a94';
+  ctx.beginPath();
+  ctx.roundRect(-22, -18, 40, 34, 6);
+  ctx.fill();
+  ctx.fillStyle = '#5f707a';
+  ctx.beginPath();
+  ctx.moveTo(18, -8);
+  ctx.lineTo(34, -20);
+  ctx.lineTo(38, -14);
+  ctx.lineTo(20, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#5f707a';
+  ctx.beginPath();
+  ctx.arc(36, -19, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#5f707a';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(-6, -14, 14, Math.PI, Math.PI * 1.9);
+  ctx.stroke();
+  ctx.restore();
+}
+
+export function paintGlasshouse(ctx, altered) {
+  paintGlass(ctx);
+  paintCrack(ctx, altered);
+  paintPlanter(ctx, altered);
+  paintButterfly(ctx, altered);
+  paintTallFlower(ctx, altered);
+  paintCactusOrShrub(ctx, altered);
+  paintBedAndPath(ctx);
+  paintSnail(ctx, altered);
+  paintWateringCan(ctx, altered);
 }

@@ -1,36 +1,22 @@
-// scenes.js — the scene book: the three pictures of Twice-Told Tides, in the
-// order they are played. Each scene module brings its own painter and its own
-// list of differences; this file only puts them in order and hands them out.
+// The scene registry: the three painters, in play order, with their
+// names, timers and difference lists. The engine and the renderer only
+// ever talk to scenes through this list.
+import { HARBOUR, paintHarbour } from './scene-harbour.js';
+import { MARKET, paintMarket } from './scene-market.js';
+import { GLASSHOUSE, paintGlasshouse } from './scene-glasshouse.js';
 
-import { harbourScene } from './scene-harbour.js';
-import { marketScene } from './scene-market.js';
-import { glasshouseScene } from './scene-glasshouse.js';
+export const SCENES = [
+  { ...HARBOUR, paint: paintHarbour },
+  { ...MARKET, paint: paintMarket },
+  { ...GLASSHOUSE, paint: paintGlasshouse },
+];
 
-export const SCENES = [harbourScene, marketScene, glasshouseScene];
-
-export function sceneAt(index) {
-  return SCENES[index];
+export function sceneById(id) {
+  return SCENES.find((scene) => scene.id === id) ?? null;
 }
 
-// The set of every difference id a scene has: the altered set the right-hand
-// panel is painted with, since the second telling changes at exactly those
-// spots.
-export function allDifferenceIds(scene) {
-  return new Set(scene.differences.map((d) => d.id));
-}
-
-// The difference whose mark covers a panel-local point, or null. When marks
-// overlap, the nearest centre wins, so a click lands on the difference the
-// player most plainly meant.
-export function differenceAt(scene, x, y) {
-  let best = null;
-  let bestDist = Infinity;
-  for (const d of scene.differences) {
-    const dist = Math.hypot(x - d.x, y - d.y);
-    if (dist <= d.r && dist < bestDist) {
-      best = d;
-      bestDist = dist;
-    }
-  }
-  return best;
+/** The altered set for a panel: which difference ids take changed form. */
+export function alteredSet(scene, ids) {
+  const known = new Set(scene.differences.map((d) => d.id));
+  return new Set([...ids].filter((id) => known.has(id)));
 }

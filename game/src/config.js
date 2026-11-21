@@ -1,59 +1,49 @@
-// config.js — the parlour's fixed measurements: canvas, panels, timing, palette.
-// Everything layout-shaped lives here so the engine and the renderer never
-// disagree about where a panel sits or how long a scene lasts.
+// Shared numbers for Twice-Told Tides: canvas size, panel geometry,
+// scene timers, penalties and the palette. One place, so the engine,
+// the renderer and the shot stager all agree.
+export const CANVAS_W = 1280;
+export const CANVAS_H = 800;
 
-// The canvas is a fixed stage; the page scales it to fit the window.
-export const VIEW = { width: 1280, height: 800 };
+// Two panels, each 560 x 560, with a 64px gutter between them.
+export const PANEL_W = 560;
+export const PANEL_H = 560;
+export const PANEL_Y = 104;
+export const PANEL_LEFT_X = 48;
+export const PANEL_RIGHT_X = 672;
 
-// Two panels side by side, each a 600 by 600 picture in its own local space.
-// Scene painters draw in panel-local coordinates (0..600 on both axes) and the
-// renderer translates the context to a panel's origin before calling them.
-export const PANEL = {
-  width: 600,
-  height: 600,
-  top: 118,
-  leftX: 24,
-  rightX: 656,
-  frame: 10, // wooden frame thickness drawn around each picture
+// Header (HUD) band and footer band.
+export const HUD_H = 88;
+export const FOOTER_Y = 688;
+
+// Clickable header buttons, laid out from the right edge.
+export const BTN_W = 92;
+export const BTN_H = 40;
+export const BTN_Y = 24;
+export const BTN_GAP = 12;
+
+// Game rules.
+export const HINTS_PER_SCENE = 3;
+export const MISS_PENALTY_S = 4;
+export const HINT_PENALTY_S = 8;
+export const HINT_RING_MS = 3500;
+export const SPARK_MS = 900;
+export const RIPPLE_MS = 700;
+
+// Palette: dusk golds, sea teal, night indigo, glasshouse green.
+export const PALETTE = {
+  ink: '#1c2438',
+  paper: '#f7f1e3',
+  gold: '#e8b64c',
+  goldDeep: '#c98f2b',
+  teal: '#2e7f7b',
+  tealDeep: '#1f5b58',
+  rust: '#b4502e',
+  cream: '#f3e6c8',
+  night: '#141a2e',
+  nightDeep: '#0c1020',
+  panelEdge: '#3a2f22',
+  good: '#4caf6d',
+  warn: '#e0a33c',
+  bad: '#d9534f',
+  violet: '#8a5fd0',
 };
-
-// Header furniture: title at the left, the remaining counter in the middle,
-// the clock at the right; the time bar runs the full width beneath it.
-export const HEADER = { height: 76 };
-export const TIME_BAR = { x: 24, y: 88, width: 1232, height: 12, radius: 6 };
-
-// The strip under the panels carries the spoken status line and the key legend.
-export const STATUS = { y: 748 };
-export const LEGEND = { y: 778 };
-
-// The economy of a hunt: what a miss costs, what a hint costs, how many hints.
-export const RULES = {
-  missPenaltySeconds: 4,
-  hintPenaltySeconds: 8,
-  hintsPerScene: 3,
-  hintSeconds: 7, // how long a hint ring stays on the pictures
-  lowTimeWarning: 10, // seconds left when the clock starts to tick aloud
-};
-
-// Star thresholds on a finished scene: one star for finishing at all, one for
-// keeping at least this share of the clock, one for never taking a hint.
-export const STAR_TIME_SHARE = 0.35;
-
-// Colours of the parlour: deep teal walls, lamplight gold, parchment text.
-export const INK = {
-  wallTop: '#17323a',
-  wallBottom: '#0b1a20',
-  parchment: '#f3e6c8',
-  parchmentDim: '#c9b995',
-  gold: '#e8b34a',
-  goldBright: '#ffd97a',
-  found: '#ffc94d',
-  miss: '#e06c5a',
-  frameDark: '#4a3220',
-  frameLight: '#7a5636',
-  veil: 'rgba(6, 14, 18, 0.72)',
-};
-
-// The fonts are generic families only, so the game needs no font files.
-export const FONT_DISPLAY = 'Georgia, "Times New Roman", serif';
-export const FONT_BODY = 'Verdana, Geneva, sans-serif';
