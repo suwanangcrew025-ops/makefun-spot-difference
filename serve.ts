@@ -1,70 +1,44 @@
-// A pocket static server for game/, so the game can be played and
-// screenshotted locally with no build step: `node serve.ts [--port 8090]`
-// serves game/ at http://localhost:8080 (or the port you name). It answers
-// only for files inside game/, with the content types a browser game needs,
-// and sends no caching headers so a reload always shows the latest paint.
-import { createReadStream, statSync } from 'node:fs';
+// serve.ts — a tiny static server for trying the game locally. It serves
+// this repository's game/ folder and nothing else: no build step, no
+// network beyond localhost. Run `node serve.ts`, then open the address it
+// prints and play Twice-Told Tides in a desktop browser.
+
 import { createServer } from 'node:http';
-import { extname, join, normalize, resolve, sep } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
+const root = fileURLToPath(new URL('./game/', import.meta.url));
+const port = Number(process.env.PORT ?? 8080);
 
-const args = process.argv.slice(2);
-const flagAt = args.indexOf('--port');
-const wanted = flagAt === -1 ? 8080 : Number(args[flagAt + 1]);
-const port = Number.isInteger(wanted) && wanted > 0 && wanted < 65536 ? wanted : 8080;
-
-const TYPES: Record<string, string> = {
+const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
   '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
+  '.png': 'image/png',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff2': 'font/woff2',
-  '.wav': 'audio/wav',
-  '.mp3': 'audio/mpeg',
-  '.ogg': 'audio/ogg',
-  '.txt': 'text/plain; charset=utf-8',
 };
 
-createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname: string;
+const server = createServer(async (req, res) => {
   try {
-    pathname = decodeURIComponent(url.pathname);
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const rel = normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '');
+    const path = join(root, rel === '' ? 'index.html' : rel);
+    if (!path.startsWith(root)) {
+      res.writeHead(403).end('outside the game folder');
+      return;
+    }
+    const body = await readFile(path);
+    res.writeHead(200, { 'content-type': types[extname(path)] ?? 'application/octet-stream' });
+    res.end(body);
   } catch {
-    response.writeHead(400).end('bad request');
-    return;
+    res.writeHead(404, { 'content-type': 'text/plain' });
+    res.end('not found');
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    return;
-  }
-  let size: number;
-  try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
-  } catch {
-    response.writeHead(404).end('not found');
-    return;
-  }
-  response.writeHead(200, {
-    'content-type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    'content-length': size,
-    'cache-control': 'no-store',
-  });
-  createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`Twice-Told Tides is on http://localhost:${port}`);
+});
+
+server.listen(port, () => {
+  console.log(`Twice-Told Tides is on the table at http://localhost:${port}`);
 });
